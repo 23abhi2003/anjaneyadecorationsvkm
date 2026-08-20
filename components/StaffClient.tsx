@@ -96,9 +96,10 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
               <>
                 <ModalHeader style={{ fontFamily: "var(--font-display)" }}>{selected.name} — assignments</ModalHeader>
                 <ModalBody>
-                  {selected.assignments?.length ? (
-                    <Table aria-label={`${selected.name} assignments`} removeWrapper>
-                      <TableHeader>
+                    {selected.assignments?.length ? (
+                    <div className="overflow-x-auto">
+                      <Table aria-label={`${selected.name} assignments`} removeWrapper className="min-w-[520px]">
+                        <TableHeader>
                         <TableColumn>ORDER</TableColumn>
                         <TableColumn>CUSTOMER NAME</TableColumn>
                         <TableColumn>AMOUNT</TableColumn>
@@ -117,7 +118,8 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
                           </TableRow>
                         ))}
                       </TableBody>
-                    </Table>
+                                         </Table>
+                    </div>
                   ) : (
                     <p className="text-sm text-foreground/60 py-6 text-center">No assignments yet.</p>
                   )}

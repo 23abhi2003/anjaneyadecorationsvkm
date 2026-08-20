@@ -46,8 +46,8 @@ export default function CustomersClient({
         </Button>
       </div>
 
-      <div className="bg-content1 rounded-lg p-2">
-        <Table removeWrapper aria-label="Customers">
+      <div className="bg-content1 rounded-lg p-2 overflow-x-auto">
+        <Table removeWrapper aria-label="Customers" className="min-w-[560px]">
           <TableHeader>
             <TableColumn>NAME</TableColumn>
             <TableColumn>PHONE</TableColumn>

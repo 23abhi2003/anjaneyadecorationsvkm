@@ -116,14 +116,14 @@ export default function OrderDetailClient({ order }: { order: Order }) {
             </a>
           )}
         </div>
-        <Image src="/logo.png" alt="Anjaneya Decorations" width={56} height={84} className="rounded-sm shrink-0" />
+        <Image src="/logo-new.png" alt="Anjaneya Decorations" width={56} height={84} className="rounded-sm shrink-0" />
       </div>
 
       <div className="flex flex-wrap gap-3 no-print">
         <Button color="primary" radius="sm" onPress={onDownloadInvoice} isLoading={pdfBusy === "invoice"} className="font-semibold">
           Download Invoice (customer)
         </Button>
-        <Button color="secondary" radius="sm" variant="flat" onPress={onDownloadStaffReport} isLoading={pdfBusy === "report"} className="font-semibold">
+        <Button color="primary" radius="sm" variant="flat" onPress={onDownloadStaffReport} isLoading={pdfBusy === "report"} className="font-semibold">
           Download Staff Report
         </Button>
         <Button color="success" radius="sm" variant="solid" onPress={onShareWhatsApp} className="font-semibold">

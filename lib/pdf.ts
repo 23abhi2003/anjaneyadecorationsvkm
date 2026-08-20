@@ -19,7 +19,7 @@ const BOTTOM_LIMIT = 275;
 
 async function loadLogoDataUrl(): Promise<string | null> {
   try {
-    const res = await fetch("/logo.png");
+    const res = await fetch("/logo-new.png");
     const blob = await res.blob();
     return await new Promise((resolve, reject) => {
       const reader = new FileReader();

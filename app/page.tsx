@@ -86,7 +86,7 @@ export default function HomePage() {
   return (
     <div className="space-y-10">
       <section className="text-center py-6">
-        <p className="text-xs uppercase tracking-[0.3em] text-[#D9A427]" style={{ fontFamily: "var(--font-mono)" }}>
+        <p className="text-lg uppercase tracking-[0.3em] text-[#D9A427]" style={{ fontFamily: "var(--font-mono)" }}>
           Anjaneya Decorations &middot; V.K.M
         </p>
         <h1 className="text-3xl md:text-4xl font-semibold text-[#F8F4E6] mt-2" style={{ fontFamily: "var(--font-display)" }}>

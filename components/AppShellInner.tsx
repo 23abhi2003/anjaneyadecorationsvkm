@@ -1,34 +1,98 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Spinner } from "@heroui/react";
 import Providers from "@/app/providers";
 import Sidebar from "@/components/Sidebar";
-import MobileTopBar from "@/components/MobileTopBar";
+import Header from "@/components/Header";
 import MobileDrawer from "@/components/MobileDrawer";
+import { useAuth } from "@/lib/Auth";
+
+const SIDEBAR_COLLAPSED_KEY = "anjaneya_sidebar_collapsed";
 
 /**
- * Loaded via next/dynamic(..., { ssr: false }) from AppShell.tsx. That's
- * deliberate: this is a static-export SPA that fetches everything from the
- * Worker API at runtime, so nothing here needs (or benefits from) server
- * rendering — and keeping it out of the Node-side prerender pass avoids an
- * SSR incompatibility between @heroui/react/framer-motion and Next's
- * static-export prerenderer.
+ * Everything that depends on auth/router state lives inside <Providers>, so it
+ * can reach useAuth(). Split out from AppShellInner so AppShellInner itself
+ * stays a thin, dynamic-import-safe wrapper (see AppShell.tsx for why).
  */
-export default function AppShellInner({ children }: { children: ReactNode }) {
+function Shell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user, loading, logout } = useAuth();
+
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Restore the persisted collapse preference after mount (avoids SSR/client mismatch).
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+    } catch {
+      // localStorage unavailable — fall back to expanded.
+    }
+  }, []);
+
+  function toggleCollapsed(): void {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // ignore write failures (private browsing, etc.)
+      }
+      return next;
+    });
+  }
+
+  const isLoginRoute = pathname === "/login";
+
+  // Route guard: bounce signed-out visitors to /login, and signed-in visitors away from it.
+  useEffect(() => {
+    if (loading) return;
+    if (!user && !isLoginRoute) {
+      router.replace("/login");
+    } else if (user && isLoginRoute) {
+      router.replace("/");
+    }
+  }, [loading, user, isLoginRoute, router]);
+
+  // The login page renders its own full-screen layout — no sidebar/header chrome.
+  if (isLoginRoute) {
+    return <>{children}</>;
+  }
+
+  // While the session is being resolved (or a redirect is in flight), show a
+  // minimal loading state instead of flashing protected content.
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#241129]">
+        <Spinner color="primary" label="Loading..." labelColor="foreground" />
+      </div>
+    );
+  }
 
   return (
-    <Providers>
-      <div className="md:flex md:min-h-screen">
-        {/* Desktop fixed sidebar */}
-        <aside className="hidden md:block md:w-64 md:shrink-0 md:border-r md:border-[#D9A427]/30">
-          <div className="md:fixed md:inset-y-0 md:w-64">
-            <Sidebar />
-          </div>
+    <div className="min-h-screen flex flex-col">
+      <Header
+        collapsed={collapsed}
+        onToggleSidebar={toggleCollapsed}
+        onOpenMobileMenu={() => setDrawerOpen(true)}
+        user={user}
+        onLogout={logout}
+      />
+
+      <div className="md:flex md:flex-1 md:min-h-0">
+        {/* Desktop fixed/collapsible sidebar */}
+        <aside
+          className={`hidden md:block md:shrink-0 md:border-r md:border-[#D9A427]/30 transition-[width] duration-200 ease-in-out ${
+            collapsed ? "md:w-[76px]" : "md:w-64"
+          }`}
+        >
+          <Sidebar collapsed={collapsed} showBrand={false} />
         </aside>
 
-        {/* Mobile top bar + drawer */}
-        <MobileTopBar onOpenMenu={() => setDrawerOpen(true)} />
+        {/* Mobile drawer (includes its own brand header) */}
         <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
         {/* Content column */}
@@ -42,6 +106,22 @@ export default function AppShellInner({ children }: { children: ReactNode }) {
           </footer>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Loaded via next/dynamic(..., { ssr: false }) from AppShell.tsx. That's
+ * deliberate: this is a static-export SPA that fetches everything from the
+ * Worker API at runtime, so nothing here needs (or benefits from) server
+ * rendering — and keeping it out of the Node-side prerender pass avoids an
+ * SSR incompatibility between @heroui/react/framer-motion and Next's
+ * static-export prerenderer.
+ */
+export default function AppShellInner({ children }: { children: ReactNode }) {
+  return (
+    <Providers>
+      <Shell>{children}</Shell>
     </Providers>
   );
 }

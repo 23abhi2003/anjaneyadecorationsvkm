@@ -16,7 +16,7 @@ export default function MobileTopBar({ onOpenMenu }: { onOpenMenu: () => void })
         <Menu size={22} />
       </button>
       <Link href="/" className="flex items-center gap-2 min-w-0">
-        <Image src="/logo.png" alt="Anjaneya Decorations logo" width={32} height={48} className="rounded-sm shrink-0" />
+        <Image src="/logo-new.png" alt="Anjaneya Decorations logo" width={32} height={48} className="rounded-sm shrink-0" />
         <p className="text-sm font-semibold text-[#8B4A15] truncate" style={{ fontFamily: "var(--font-display)" }}>
           Anjaneya Decorations
         </p>

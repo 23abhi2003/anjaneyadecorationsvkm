@@ -4,7 +4,6 @@
  * Pages' "Environment variables" settings, or in `.env.local` for local dev.
  */
 // export const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8787").replace(/\/$/, "");
-// anjaneyadecorations-api.vangaabhi766.workers.dev
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "https://anjaneyadecorations-api.vangaabhi766.workers.dev").replace(/\/$/, "");
 
 

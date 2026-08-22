@@ -56,15 +56,6 @@ export default function Header({
 
       <div className="flex-1" />
 
-      <a
-        href="mailto:anjaneyadecors766@gmail.com"
-        className="hidden sm:inline-flex items-center gap-1.5 text-sm text-[#241129]/70 hover:text-[#8B4A15] px-2.5 py-1.5 rounded-md hover:bg-[#8B4A15]/5 transition-colors"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        <LifeBuoy size={17} />
-        Support
-      </a>
-
       <Dropdown placement="bottom-end">
         <DropdownTrigger>
           <button

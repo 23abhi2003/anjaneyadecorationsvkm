@@ -16,7 +16,7 @@ export const PROGRAM_TYPES: string[] = [
 export const TENT_SIZES: string[] = ["3x6", "4x8", "4x8 (big)", "5x10", "6x12", "Round tent"];
 
 export const BOWL_TYPES: Record<string, string[]> = {
-  Baghoni: ["10kg", "20kg", "25kg", "30kg", "40kg"],
+  Baghoni: ["10kg", "20kg", "25kg", "30kg", "40kg" ,"50kg","70kg"],
   Anda: ["50kg", "70kg"],
   Lagan: ["30kg", "70kg"],
 };

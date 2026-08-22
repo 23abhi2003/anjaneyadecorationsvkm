@@ -16,6 +16,16 @@ function daysUntil(dateStr: string | null): number {
   return Math.round((d.getTime() - now.getTime()) / 86400000);
 }
 
+/** Given an order's program, return the label to display — the typed name when the
+ * program type is "Others", otherwise the program type, falling back to service type. */
+function programLabel(o: Order): string {
+  const program = o.program;
+  if (program?.type === "Others") {
+    return program.name?.trim() || o.serviceType;
+  }
+  return program?.type || o.serviceType;
+}
+
 export default function HomePage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -86,12 +96,9 @@ export default function HomePage() {
   return (
     <div className="space-y-10">
       <section className="text-center py-6">
-        <p className="text-lg uppercase tracking-[0.3em] text-[#D9A427]" style={{ fontFamily: "var(--font-mono)" }}>
-          Anjaneya Decorations &middot; V.K.M
+        <p className="text-xl uppercase tracking-[0.9em] text-[#D9A427]" style={{ fontFamily: "var(--font-mono)" }}>
+          Anjaneya Decorations  V.K.M
         </p>
-        <h1 className="text-3xl md:text-4xl font-semibold text-[#F8F4E6] mt-2" style={{ fontFamily: "var(--font-display)" }}>
-          Every order, staff assignment, and invoice in one place.
-        </h1>
         <div className="max-w-xl mx-auto mt-6">
           <DashboardSearch orders={orders} />
         </div>
@@ -163,7 +170,7 @@ export default function HomePage() {
                 <span className="text-sm text-foreground">
                   <span className="text-foreground/40 mr-1">{o.id}</span>
                   <strong>{o.customer?.name}</strong>{" "}
-                  <span className="text-foreground/50">— {o.program?.type || o.serviceType}</span>
+                  <span className="text-foreground/50">— {programLabel(o)}</span>
                 </span>
                 <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
                   {o.eventDate}

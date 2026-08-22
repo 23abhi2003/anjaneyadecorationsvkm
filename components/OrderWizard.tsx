@@ -1,8 +1,19 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardBody, Input, Button, Progress, Divider } from "@heroui/react";
+import {
+  Card,
+  CardBody,
+  Input,
+  Button,
+  Progress,
+  Divider,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@heroui/react";
 import QtyGrid from "@/components/QtyGrid";
 import QtyField from "@/components/QtyField";
 import LocationField from "@/components/LocationField";
@@ -30,12 +41,15 @@ import type {
   GeoLocation,
   StaffMember,
   Order,
+  Customer, // NOTE: add/export this type from @/lib/types if not already present.
+              // Expected shape: { id: string; name: string; phone?: string; address?: string;
+              //                    location?: GeoLocation | null; type?: CustomerType }
 } from "@/lib/types";
 
 interface WizardForm {
   customer: { name: string; phone: string; type: CustomerType; address: string; location: GeoLocation | null };
   serviceType: ServiceType;
-  program: { type: string; name: string; imageUrl: string };
+  program: { type: string; name: string; images: string[] };
   eventDate: string;
   tenthouse: TenthouseInfo;
   decoration: DecorationInfo;
@@ -43,16 +57,24 @@ interface WizardForm {
   invoice: InvoiceInfo;
 }
 
+/** Given a program's { type, name }, return the label to display anywhere in the UI. */
+function programLabel(program: { type?: string; name?: string } | null | undefined): string {
+  if (!program) return "—";
+  if (program.type === "Others") return program.name?.trim() || "—";
+  return program.type || "—";
+}
+
 const emptyForm: WizardForm = {
   customer: { name: "", phone: "", type: "new", address: "", location: null },
   serviceType: "",
-  program: { type: "", name: "", imageUrl: "" },
+  program: { type: "", name: "", images: [] },
   eventDate: "",
   tenthouse: {
     tents: {},
     bowls: { Baghoni: {}, Anda: {}, Lagan: {} },
     tablesBig: "",
     tablesSmall: "",
+    chairs: "",
     riceDishes: "",
     riceSpoons: "",
     curryBuckets: "",
@@ -66,6 +88,7 @@ const emptyForm: WizardForm = {
     ledLights: "",
     djBoxes: "",
     woodenTables: "",
+    wireboxes: "",
   },
   decoration: {
     frames: {},
@@ -106,7 +129,7 @@ const STEP_TITLES: Record<StepKey, string> = {
   program: "Program",
   "tent-size": "Tent size",
   bowls: "Bowls / gas",
-  "tent-utensils": "Tables & utensils",
+  "tent-utensils": "Tables, chairs & utensils",
   "tent-extras": "Stoves, stands & lighting",
   "frames-cloth": "Frames, stage & lighting",
   "ceiling-poles": "Ceiling & sidewalls",
@@ -157,6 +180,253 @@ function ChoiceChips({
           {opt}
         </Button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Shown when the customer type is "older" — lets staff search past customers,
+ * pick one to auto-fill contact details below, and preview that customer's
+ * order history for context.
+ */
+function OlderCustomerPicker({
+  onPick,
+}: {
+  onPick: (customer: { name: string; phone: string; address: string; location: GeoLocation | null }) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load(): Promise<void> {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await apiFetch("/api/customers");
+        if (!res.ok) throw new Error("failed");
+        const data = (await res.json()) as Customer[];
+        if (!cancelled) setCustomers(data);
+      } catch {
+        if (!cancelled) setError("Could not load past customers.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = customers.filter((c) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return c.name?.toLowerCase().includes(q) || (c.phone || "").includes(q);
+  });
+
+  async function selectCustomer(c: Customer): Promise<void> {
+    setSelectedId(c.id);
+    setOrders([]);
+    onPick({
+      name: c.name || "",
+      phone: c.phone || "",
+      address: c.address || "",
+      location: c.location || null,
+    });
+    setOrdersLoading(true);
+    try {
+      const res = await apiFetch(`/api/customers/${encodeURIComponent(c.id)}/orders`);
+      if (res.ok) {
+        const data = (await res.json()) as Order[];
+        setOrders(data);
+      }
+    } catch {
+      // Non-fatal — order history is a convenience, not required to continue.
+    } finally {
+      setOrdersLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-content3 bg-content2/50 p-4">
+      <Input
+        label="Search past customers"
+        placeholder="Name or phone number"
+        variant="bordered"
+        size="sm"
+        value={query}
+        onValueChange={setQuery}
+      />
+
+      {loading && <p className="text-sm text-foreground/50">Loading customers…</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
+
+      {!loading && !error && (
+        <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+          {filtered.length === 0 && <p className="text-sm text-foreground/50">No matching customers.</p>}
+          {filtered.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => selectCustomer(c)}
+              className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors ${
+                selectedId === c.id ? "bg-primary/15 border border-primary/40" : "bg-content1 hover:bg-content3/60 border border-transparent"
+              }`}
+            >
+              <span className="font-medium">{c.name}</span>
+              {c.phone && <span className="text-foreground/50"> &middot; {c.phone}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedId && (
+        <div className="pt-2 border-t border-content3">
+          <p className="text-xs uppercase tracking-wide text-secondary mb-2" style={{ fontFamily: "var(--font-mono)" }}>
+            Past orders
+          </p>
+          {ordersLoading && <p className="text-sm text-foreground/50">Loading orders…</p>}
+          {!ordersLoading && orders.length === 0 && <p className="text-sm text-foreground/50">No previous orders found.</p>}
+          {!ordersLoading && orders.length > 0 && (
+            <ul className="space-y-1 text-sm text-foreground/80">
+              {orders.map((o) => (
+                <li key={o.id} className="flex items-center justify-between gap-2">
+                  <span>
+                    {programLabel(o.program) !== "—" ? programLabel(o.program) : o.serviceType} &middot; {o.eventDate || "no date"}
+                  </span>
+                  <span className="text-foreground/40 text-xs" style={{ fontFamily: "var(--font-mono)" }}>
+                    {o.id}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Upload / Camera / thumbnail grid for capturing multiple decoration images.
+ * Stores images as data URLs in memory (swap `filesToDataUrls` for a real
+ * upload-to-storage call if you want to persist actual files instead).
+ */
+function ImageUploadField({
+  images,
+  onChange,
+}: {
+  images: string[];
+  onChange: (images: string[]) => void;
+}) {
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  function filesToDataUrls(files: FileList | null): void {
+    if (!files || files.length === 0) return;
+    const readers = Array.from(files).map(
+      (file) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        })
+    );
+    Promise.all(readers)
+      .then((dataUrls) => onChange([...images, ...dataUrls]))
+      .catch(() => {
+        /* ignore unreadable files */
+      });
+  }
+
+  function removeImage(idx: number): void {
+    onChange(images.filter((_, i) => i !== idx));
+  }
+
+  function handleMenuAction(key: React.Key): void {
+    if (key === "upload") uploadInputRef.current?.click();
+    if (key === "camera") cameraInputRef.current?.click();
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+        Decoration images
+      </p>
+
+      <div className="flex flex-wrap gap-3">
+        <Button variant="bordered" radius="sm" className="font-semibold" onPress={() => uploadInputRef.current?.click()}>
+          Upload
+        </Button>
+        <Button variant="bordered" radius="sm" className="font-semibold" onPress={() => cameraInputRef.current?.click()}>
+          Camera
+        </Button>
+      </div>
+
+      {/* Hidden native inputs */}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          filesToDataUrls(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          filesToDataUrls(e.target.files);
+          e.target.value = "";
+        }}
+      />
+
+      {/* Thumbnails + trailing "+" add tile with Camera/Upload dropdown */}
+      <div className="flex flex-wrap gap-3">
+        {images.map((src, idx) => (
+          <div key={idx} className="relative w-20 h-20 rounded-md overflow-hidden border border-content3 group">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt={`Decoration ${idx + 1}`} className="w-full h-full object-cover" />
+            <button
+              type="button"
+              onClick={() => removeImage(idx)}
+              className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white text-xs leading-5 text-center opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label="Remove image"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+
+        <Dropdown placement="bottom-start">
+          <DropdownTrigger>
+            <button
+              type="button"
+              className="w-20 h-20 rounded-md border-2 border-dashed border-content3 flex items-center justify-center text-2xl text-foreground/40 hover:text-primary hover:border-primary transition-colors"
+              aria-label="Add more images"
+            >
+              +
+            </button>
+          </DropdownTrigger>
+          <DropdownMenu aria-label="Add image source" onAction={handleMenuAction}>
+            <DropdownItem key="camera">Camera</DropdownItem>
+            <DropdownItem key="upload">Upload</DropdownItem>
+          </DropdownMenu>
+        </Dropdown>
+      </div>
     </div>
   );
 }
@@ -262,6 +532,18 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
                 value={form.customer.type}
                 onChange={(v) => setPath("customer.type", v)}
               />
+
+              {form.customer.type === "older" && (
+                <OlderCustomerPicker
+                  onPick={(c) =>
+                    setForm((f) => ({
+                      ...f,
+                      customer: { ...f.customer, name: c.name, phone: c.phone, address: c.address, location: c.location },
+                    }))
+                  }
+                />
+              )}
+
               <div className="grid sm:grid-cols-2 gap-4">
                 <Input
                   label="Customer name"
@@ -329,11 +611,9 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
                 value={form.eventDate}
                 onValueChange={(v) => setPath("eventDate", v)}
               />
-              <Input
-                label="Decoration image (link or filename for now)"
-                variant="bordered"
-                value={form.program.imageUrl}
-                onValueChange={(v) => setPath("program.imageUrl", v)}
+              <ImageUploadField
+                images={form.program.images}
+                onChange={(images) => setPath("program.images", images)}
               />
             </>
           )}
@@ -377,6 +657,7 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
             <div className="grid sm:grid-cols-2 gap-3">
               <QtyField label="Tables, big" value={form.tenthouse.tablesBig} onChange={(v) => setPath("tenthouse.tablesBig", v)} />
               <QtyField label="Tables, small" value={form.tenthouse.tablesSmall} onChange={(v) => setPath("tenthouse.tablesSmall", v)} />
+              <QtyField label="Chairs" value={form.tenthouse.chairs} onChange={(v) => setPath("tenthouse.chairs", v)} />
               <QtyField label="Rice dishes (thatlu)" value={form.tenthouse.riceDishes} onChange={(v) => setPath("tenthouse.riceDishes", v)} />
               <QtyField label="Rice spoons" value={form.tenthouse.riceSpoons} onChange={(v) => setPath("tenthouse.riceSpoons", v)} />
               <QtyField label="Curry buckets (bakitlu)" value={form.tenthouse.curryBuckets} onChange={(v) => setPath("tenthouse.curryBuckets", v)} />
@@ -401,6 +682,7 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
                 <QtyField label="LED lights" value={form.tenthouse.ledLights} onChange={(v) => setPath("tenthouse.ledLights", v)} />
                 <QtyField label="DJ boxes" value={form.tenthouse.djBoxes} onChange={(v) => setPath("tenthouse.djBoxes", v)} />
                 <QtyField label="Wooden tables" value={form.tenthouse.woodenTables} onChange={(v) => setPath("tenthouse.woodenTables", v)} />
+                <QtyField label="Wireboxes" value={form.tenthouse.wireboxes} onChange={(v) => setPath("tenthouse.wireboxes", v)} />
               </div>
             </>
           )}
@@ -627,6 +909,10 @@ function ReviewSummary({
     pushGroup("Flowers", form.decoration.flowers);
   }
 
+  // "Others" shows the typed program name instead of the literal word "Others".
+  const isOthersProgram = form.program.type === "Others";
+  const typedProgramName = form.program.name.trim();
+
   return (
     <div className="space-y-4 text-sm">
       <div className="bg-content2 rounded-md p-4">
@@ -641,9 +927,28 @@ function ReviewSummary({
           <p><span className="text-foreground/50">Phone:</span> {form.customer.phone || "—"}</p>
           <p><span className="text-foreground/50">Address:</span> {form.customer.address || "—"}</p>
           <p><span className="text-foreground/50">Service:</span> {form.serviceType || "—"}</p>
-          <p><span className="text-foreground/50">Program:</span> {form.program.type || "—"}</p>
+          <p>
+            <span className="text-foreground/50">Program:</span>{" "}
+            {isOthersProgram ? (
+              typedProgramName ? (
+                <span className="underline underline-offset-4 decoration-dotted">{typedProgramName}</span>
+              ) : (
+                <span className="text-foreground/40">________</span>
+              )
+            ) : (
+              form.program.type || "—"
+            )}
+          </p>
           <p><span className="text-foreground/50">Event date:</span> {form.eventDate || "—"}</p>
         </div>
+        {form.program.images.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {form.program.images.map((src, idx) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={idx} src={src} alt={`Decoration ${idx + 1}`} className="w-16 h-16 rounded-md object-cover border border-content3" />
+            ))}
+          </div>
+        )}
       </div>
       {rows.map((r) => (
         <div key={r.label}>

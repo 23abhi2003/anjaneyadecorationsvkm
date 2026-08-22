@@ -20,7 +20,7 @@ export interface CustomerInfo {
 export interface ProgramInfo {
   type: string;
   name: string;
-  imageUrl: string;
+  images: string[];
 }
 
 /** Maps an option label (e.g. "4x8", "50kg") to a free-text quantity. */
@@ -37,6 +37,7 @@ export interface TenthouseInfo {
   bowls: BowlsInfo;
   tablesBig: string;
   tablesSmall: string;
+  chairs: string;
   riceDishes: string;
   riceSpoons: string;
   curryBuckets: string;
@@ -50,6 +51,7 @@ export interface TenthouseInfo {
   ledLights: string;
   djBoxes: string;
   woodenTables: string;
+  wireboxes: string;
 }
 
 export interface DecorationInfo {

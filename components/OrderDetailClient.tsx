@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Card, CardBody, Divider, Input, Button, Chip, Select, SelectItem, Textarea } from "@heroui/react";
 import Image from "next/image";
 import type { Order, OrderStatus } from "@/lib/types";
@@ -120,6 +121,16 @@ export default function OrderDetailClient({ order }: { order: Order }) {
       </div>
 
       <div className="flex flex-wrap gap-3 no-print">
+        <Button
+          as={Link}
+          href={`/orders/edit?id=${encodeURIComponent(order.id)}`}
+          color="primary"
+          radius="sm"
+          variant="flat"
+          className="font-semibold"
+        >
+          Edit order
+        </Button>
         <Button color="primary" radius="sm" onPress={onDownloadInvoice} isLoading={pdfBusy === "invoice"} className="font-semibold">
           Download Invoice (customer)
         </Button>
@@ -231,7 +242,19 @@ export default function OrderDetailClient({ order }: { order: Order }) {
 
           <Divider />
 
-          <Textarea label="Notes" variant="bordered" value={notes} onValueChange={setNotes} minRows={3} />
+          <div>
+            <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-display)" }}>
+              Notes
+            </h2>
+            <Textarea
+              aria-label="Notes"
+              placeholder="Anything staff or the office should know about this order…"
+              variant="bordered"
+              value={notes}
+              onValueChange={setNotes}
+              minRows={3}
+            />
+          </div>
 
           <div className="flex items-center gap-3 no-print">
             <Button color="primary" onPress={onSave} isLoading={saving} radius="sm" className="font-semibold">

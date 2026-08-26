@@ -13,6 +13,7 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
+  Textarea,
 } from "@heroui/react";
 import QtyGrid from "@/components/QtyGrid";
 import QtyField from "@/components/QtyField";
@@ -55,6 +56,7 @@ interface WizardForm {
   decoration: DecorationInfo;
   staffAssigned: StaffAssignment[];
   invoice: InvoiceInfo;
+  notes: string;
 }
 
 /** Given a program's { type, name }, return the label to display anywhere in the UI. */
@@ -106,7 +108,43 @@ const emptyForm: WizardForm = {
   },
   staffAssigned: [],
   invoice: { totalAmount: "", advancePaid: "", paymentType: "" },
+  notes: "",
 };
+
+/** Converts an existing Order (from the API) into the wizard's form shape, for edit mode. */
+function orderToForm(order: Order): WizardForm {
+  return {
+    customer: {
+      name: order.customer?.name || "",
+      phone: order.customer?.phone || "",
+      type: order.customer?.type || "new",
+      address: order.customer?.address || "",
+      location: order.customer?.location || null,
+    },
+    serviceType: order.serviceType || "",
+    program: {
+      type: order.program?.type || "",
+      name: order.program?.name || "",
+      images: order.program?.images || [],
+    },
+    eventDate: order.eventDate || "",
+    tenthouse: order.tenthouse
+      ? {
+          ...emptyForm.tenthouse,
+          ...order.tenthouse,
+          bowls: { ...emptyForm.tenthouse.bowls, ...(order.tenthouse.bowls || {}) },
+        }
+      : emptyForm.tenthouse,
+    decoration: order.decoration ? { ...emptyForm.decoration, ...order.decoration } : emptyForm.decoration,
+    staffAssigned: order.staffAssigned || [],
+    invoice: {
+      totalAmount: order.invoice?.totalAmount || "",
+      advancePaid: order.invoice?.advancePaid || "",
+      paymentType: order.invoice?.paymentType || "",
+    },
+    notes: order.notes || "",
+  };
+}
 
 type StepKey =
   | "customer"
@@ -135,7 +173,7 @@ const STEP_TITLES: Record<StepKey, string> = {
   "ceiling-poles": "Ceiling & sidewalls",
   flowers: "Flowers",
   staff: "Assign staff",
-  invoice: "Invoice",
+  invoice: "Invoice & notes",
   review: "Review & save",
 };
 
@@ -442,10 +480,20 @@ function setDeep<T extends object>(obj: T, path: string, value: unknown): T {
   return copy;
 }
 
-export default function OrderWizard({ staffList }: { staffList: StaffMember[] }) {
+export default function OrderWizard({
+  staffList,
+  initialOrder,
+}: {
+  staffList: StaffMember[];
+  /** When provided, the wizard edits this existing order (PUT) instead of creating a new one (POST). */
+  initialOrder?: Order;
+}) {
   const router = useRouter();
-  const [form, setForm] = useState<WizardForm>(emptyForm);
-  const [stepIdx, setStepIdx] = useState(0);
+  const isEdit = !!initialOrder;
+  const [form, setForm] = useState<WizardForm>(() => (initialOrder ? orderToForm(initialOrder) : emptyForm));
+  // Editing an existing order jumps straight to the review step, where every section has its
+  // own "Edit" button that redirects back to the exact step for that item.
+  const [stepIdx, setStepIdx] = useState(isEdit ? Number.MAX_SAFE_INTEGER : 0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const steps = useSteps(form.serviceType);
@@ -491,21 +539,28 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
     setSaving(true);
     setError("");
     try {
-      const res = await apiFetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          tenthouse: form.serviceType === "decoration" ? null : form.tenthouse,
-          decoration: form.serviceType === "tenthouse" ? null : form.decoration,
-          invoice: { ...form.invoice, dueAmount: String(dueAmount) },
-        }),
-      });
+      const payload = {
+        ...form,
+        tenthouse: form.serviceType === "decoration" ? null : form.tenthouse,
+        decoration: form.serviceType === "tenthouse" ? null : form.decoration,
+        invoice: { ...form.invoice, dueAmount: String(dueAmount) },
+      };
+      const res = isEdit
+        ? await apiFetch(`/api/orders/${encodeURIComponent(initialOrder!.id)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await apiFetch("/api/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
       if (!res.ok) throw new Error("failed");
-      const created = (await res.json()) as Order;
-      router.push(`/orders/detail?id=${encodeURIComponent(created.id)}`);
+      const saved = (await res.json()) as Order;
+      router.push(`/orders/detail?id=${encodeURIComponent(saved.id)}`);
     } catch {
-      setError("Could not save the order. Please try again.");
+      setError(isEdit ? "Could not save changes. Please try again." : "Could not save the order. Please try again.");
       setSaving(false);
     }
   }
@@ -521,7 +576,7 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
           Step {stepIdx + 1} of {steps.length}
         </p>
         <h2 className="text-2xl font-semibold text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
-          {STEP_TITLES[step]}
+          {step === "customer" && isEdit ? "Edit order" : STEP_TITLES[step]}
         </h2>
 
         <div className="space-y-5">
@@ -778,6 +833,14 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
                 </p>
                 <ChoiceChips options={PAYMENT_TYPES} value={form.invoice.paymentType} onChange={(v) => setPath("invoice.paymentType", v)} />
               </div>
+              <Textarea
+                label="Notes"
+                placeholder="Anything staff or the office should know about this order…"
+                variant="bordered"
+                value={form.notes}
+                onValueChange={(v) => setPath("notes", v)}
+                minRows={3}
+              />
             </>
           )}
 
@@ -807,7 +870,7 @@ export default function OrderWizard({ staffList }: { staffList: StaffMember[] })
             </Button>
           ) : (
             <Button color="primary" onPress={onSave} isLoading={saving} radius="sm" className="font-semibold">
-              Save order
+              {isEdit ? "Save changes" : "Save order"}
             </Button>
           )}
         </div>
@@ -990,6 +1053,15 @@ function ReviewSummary({
             Due ₹{dueAmount.toLocaleString("en-IN")}
           </span>
         </div>
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <p className="uppercase tracking-wide text-secondary text-xs" style={{ fontFamily: "var(--font-mono)" }}>
+            Notes
+          </p>
+          <EditButton onPress={() => onEdit("invoice")} />
+        </div>
+        <p className="text-foreground/80 whitespace-pre-wrap">{form.notes.trim() || "No notes added."}</p>
       </div>
     </div>
   );

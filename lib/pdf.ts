@@ -147,9 +147,25 @@ export async function generateInvoicePdf(order: Order): Promise<void> {
 
   y = writeLine(doc, "Payment type", order.invoice.paymentType || "-", MARGIN, y);
 
+  if (order.notes?.trim()) {
+    y += 3;
+    y = ensureSpace(doc, y, 20);
+    y = sectionTitle(doc, "Notes", y, COLORS.royal);
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COLORS.aubergine);
+    const noteLines = doc.splitTextToSize(order.notes.trim(), PAGE_WIDTH - MARGIN * 2 - 2);
+    noteLines.forEach((line: string) => {
+      y = ensureSpace(doc, y);
+      doc.text(line, MARGIN + 2, y);
+      y += 5.5;
+    });
+    y += 1;
+  }
+
   const link = mapsLinkForOrder(order);
   if (link) {
     y += 4;
+    y = ensureSpace(doc, y, 10);
     doc.setTextColor(...COLORS.royal);
     doc.setFontSize(10);
     doc.textWithLink("View customer location on Google Maps", MARGIN, y, { url: link });
@@ -199,6 +215,20 @@ export async function generateStaffReportPdf(order: Order): Promise<void> {
       // Deliberately no amount printed here.
       doc.text(`\u2022 ${s.name}`, MARGIN + 2, y);
       y += 6;
+    });
+  }
+
+  if (order.notes?.trim()) {
+    y += 3;
+    y = ensureSpace(doc, y, 20);
+    y = sectionTitle(doc, "Notes", y, COLORS.leaf);
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COLORS.aubergine);
+    const noteLines = doc.splitTextToSize(order.notes.trim(), PAGE_WIDTH - MARGIN * 2 - 2);
+    noteLines.forEach((line: string) => {
+      y = ensureSpace(doc, y);
+      doc.text(line, MARGIN + 2, y);
+      y += 5.5;
     });
   }
 

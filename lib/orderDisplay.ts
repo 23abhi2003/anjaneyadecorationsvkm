@@ -34,6 +34,7 @@ export function collectItemLines(order: Order): string[] {
     const extras: Array<[string, string]> = [
       ["Tables, big", t.tablesBig],
       ["Tables, small", t.tablesSmall],
+      ["Chairs", t.chairs],
       ["Rice dishes", t.riceDishes],
       ["Rice spoons", t.riceSpoons],
       ["Curry buckets", t.curryBuckets],
@@ -41,12 +42,16 @@ export function collectItemLines(order: Order): string[] {
       ["Curry donga", t.curryDonga],
       ["Kabgir", t.kabgir],
       ["Jallithati", t.jallithati],
+      ["Jalligante", t.jalligante],
+      ["Jugs", t.jugs],
+      ["Kanchudu", t.kanchudu],
       ["Stoves", t.stoveType],
       ["Stands", t.stands],
       ["Drums", t.drums],
       ["LED lights", t.ledLights],
       ["DJ boxes", t.djBoxes],
       ["Wooden tables", t.woodenTables],
+      ["Wireboxes", t.wireboxes],
     ];
     extras.filter(([, v]) => v).forEach(([k, v]) => lines.push(`${k}: ${v}`));
   }

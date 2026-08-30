@@ -84,6 +84,9 @@ const emptyForm: WizardForm = {
     curryDonga: "",
     kabgir: "",
     jallithati: "",
+    jalligante: "",
+    jugs: "",
+    kanchudu: "",
     stoveType: "",
     stands: "",
     drums: "",
@@ -707,7 +710,6 @@ export default function OrderWizard({
               </div>
             </>
           )}
-
           {step === "tent-utensils" && (
             <div className="grid sm:grid-cols-2 gap-3">
               <QtyField label="Tables, big" value={form.tenthouse.tablesBig} onChange={(v) => setPath("tenthouse.tablesBig", v)} />
@@ -720,6 +722,8 @@ export default function OrderWizard({
               <QtyField label="Curry donga (big)" value={form.tenthouse.curryDonga} onChange={(v) => setPath("tenthouse.curryDonga", v)} />
               <QtyField label="Kabgir (big spoon)" value={form.tenthouse.kabgir} onChange={(v) => setPath("tenthouse.kabgir", v)} />
               <QtyField label="Jallithati (rice filter bowl)" value={form.tenthouse.jallithati} onChange={(v) => setPath("tenthouse.jallithati", v)} />
+              <QtyField label="Jalligante" value={form.tenthouse.jalligante} onChange={(v) => setPath("tenthouse.jalligante", v)} />
+              <QtyField label="Jugs" value={form.tenthouse.jugs} onChange={(v) => setPath("tenthouse.jugs", v)} />
             </div>
           )}
 

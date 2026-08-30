@@ -45,6 +45,9 @@ export interface TenthouseInfo {
   curryDonga: string;
   kabgir: string;
   jallithati: string;
+  jalligante: string;
+  jugs: string;
+  kanchudu: string;
   stoveType: string;
   stands: string;
   drums: string;

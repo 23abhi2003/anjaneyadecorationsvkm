@@ -2,7 +2,11 @@ export type ServiceType = "tenthouse" | "decoration" | "both" | "";
 
 export type OrderStatus = "pending" | "confirmed" | "completed";
 
+export type CompletionStatus = "pending" | "completed";
+
 export type CustomerType = "new" | "older";
+
+export type Role = "owner" | "staff";
 
 export interface GeoLocation {
   lat: number;
@@ -98,6 +102,10 @@ export interface Order {
   program: ProgramInfo;
   eventDate: string | null;
   status: OrderStatus;
+  /** Has the physical order (tent/decoration work) been completed? */
+  orderCompletionStatus?: CompletionStatus;
+  /** Has the invoice been paid in full? Owner-managed only. */
+  paymentCompletionStatus?: CompletionStatus;
   createdAt: string;
   tenthouse: TenthouseInfo | null;
   decoration: DecorationInfo | null;
@@ -128,5 +136,7 @@ export interface StaffMember {
   id: string;
   name: string;
   phone: string;
+  /** 4-digit login PIN. Never returned by the API — write-only from the client. */
+  pin?: string;
   assignments: StaffAssignmentRecord[];
 }

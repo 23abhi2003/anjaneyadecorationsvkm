@@ -5,17 +5,27 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardBody, Divider, Input, Button, Chip, Select, SelectItem, Textarea } from "@heroui/react";
 import Image from "next/image";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { Order, OrderStatus, CompletionStatus } from "@/lib/types";
 import { collectItemLines, mapsLinkForOrder } from "@/lib/orderDisplay";
 import { generateInvoicePdf, generateStaffReportPdf } from "@/lib/pdf";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/lib/Auth";
 
-const STATUS_OPTIONS: OrderStatus[] = ["pending", "confirmed", "completed"];
 const PAYMENT_OPTIONS: string[] = ["UPI", "Cash", "Other"];
+
+const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
+  pending: "warning",
+  confirmed: "success",
+  completed: "secondary",
+};
 
 export default function OrderDetailClient({ order }: { order: Order }) {
   const router = useRouter();
-  const [status, setStatus] = useState<OrderStatus>(order.status || "pending");
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
+
+  const [orderCompletion, setOrderCompletion] = useState<CompletionStatus>(order.orderCompletionStatus || "pending");
+  const [paymentCompletion, setPaymentCompletion] = useState<CompletionStatus>(order.paymentCompletionStatus || "pending");
   const [invoice, setInvoice] = useState({
     totalAmount: order.invoice?.totalAmount || "",
     advancePaid: order.invoice?.advancePaid || "",
@@ -30,12 +40,30 @@ export default function OrderDetailClient({ order }: { order: Order }) {
   const advance = parseFloat(invoice.advancePaid) || 0;
   const due = Math.max(total - advance, 0);
 
+  // Mirrors the backend's computeOverallStatus() so the chip updates instantly, before save.
+  const overallStatus: OrderStatus =
+    orderCompletion === "completed" && paymentCompletion === "completed"
+      ? "completed"
+      : orderCompletion === "completed" || paymentCompletion === "completed" || order.status === "confirmed"
+        ? "confirmed"
+        : "pending";
+
   async function onSave(): Promise<void> {
     setSaving(true);
+    const payload: Partial<Order> = {
+      orderCompletionStatus: orderCompletion,
+      notes,
+      ...(isOwner
+        ? {
+            paymentCompletionStatus: paymentCompletion,
+            invoice: { ...invoice, dueAmount: String(due) },
+          }
+        : {}),
+    };
     const res = await apiFetch(`/api/orders/${order.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, invoice: { ...invoice, dueAmount: String(due) }, notes }),
+      body: JSON.stringify(payload),
     });
     setSaving(false);
     if (res.ok) {
@@ -54,7 +82,7 @@ export default function OrderDetailClient({ order }: { order: Order }) {
   async function onDownloadInvoice(): Promise<void> {
     setPdfBusy("invoice");
     try {
-      await generateInvoicePdf({ ...order, status, invoice: { ...invoice, dueAmount: String(due) }, notes });
+      await generateInvoicePdf({ ...order, status: overallStatus, invoice: { ...invoice, dueAmount: String(due) }, notes });
     } finally {
       setPdfBusy(null);
     }
@@ -63,7 +91,7 @@ export default function OrderDetailClient({ order }: { order: Order }) {
   async function onDownloadStaffReport(): Promise<void> {
     setPdfBusy("report");
     try {
-      await generateStaffReportPdf({ ...order, status, invoice: { ...invoice, dueAmount: String(due) }, notes });
+      await generateStaffReportPdf({ ...order, status: overallStatus, invoice: { ...invoice, dueAmount: String(due) }, notes });
     } finally {
       setPdfBusy(null);
     }
@@ -82,7 +110,9 @@ export default function OrderDetailClient({ order }: { order: Order }) {
       `Hi ${order.customer.name || ""}, here are your order details:`,
       `Program: ${order.program?.type || order.serviceType}`,
       `Event date: ${order.eventDate || "-"}`,
-      `Total: ₹${total.toLocaleString("en-IN")}  Advance: ₹${advance.toLocaleString("en-IN")}  Due: ₹${due.toLocaleString("en-IN")}`,
+      ...(isOwner
+        ? [`Total: ₹${total.toLocaleString("en-IN")}  Advance: ₹${advance.toLocaleString("en-IN")}  Due: ₹${due.toLocaleString("en-IN")}`]
+        : []),
     ];
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
     window.open(url, "_blank", "noopener,noreferrer");
@@ -131,9 +161,11 @@ export default function OrderDetailClient({ order }: { order: Order }) {
         >
           Edit order
         </Button>
-        <Button color="primary" radius="sm" onPress={onDownloadInvoice} isLoading={pdfBusy === "invoice"} className="font-semibold">
-          Download Invoice (customer)
-        </Button>
+        {isOwner && (
+          <Button color="primary" radius="sm" onPress={onDownloadInvoice} isLoading={pdfBusy === "invoice"} className="font-semibold">
+            Download Invoice (customer)
+          </Button>
+        )}
         <Button color="primary" radius="sm" variant="flat" onPress={onDownloadStaffReport} isLoading={pdfBusy === "report"} className="font-semibold">
           Download Staff Report
         </Button>
@@ -145,20 +177,51 @@ export default function OrderDetailClient({ order }: { order: Order }) {
       <Card className="bg-content1">
         <CardBody className="p-6 space-y-6">
           <div className="flex flex-wrap items-center gap-4">
-            <Select
-              label="Status"
-              selectedKeys={[status]}
-              onSelectionChange={(keys) => setStatus(Array.from(keys)[0] as OrderStatus)}
-              className="max-w-[200px]"
-              variant="bordered"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <SelectItem key={s}>{s}</SelectItem>
-              ))}
-            </Select>
+            <Chip color={statusColor[overallStatus]} variant="flat" className="uppercase text-xs font-semibold">
+              {overallStatus}
+            </Chip>
             <Chip color="secondary" variant="flat">
               {order.serviceType}
             </Chip>
+          </div>
+
+          <Divider />
+
+          <div>
+            <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-display)" }}>
+              Completion status
+            </h2>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Select
+                label="Order completion"
+                description="Has the tent/decoration work been done?"
+                selectedKeys={[orderCompletion]}
+                onSelectionChange={(keys) => setOrderCompletion(Array.from(keys)[0] as CompletionStatus)}
+                variant="bordered"
+              >
+                <SelectItem key="pending">pending</SelectItem>
+                <SelectItem key="completed">completed</SelectItem>
+              </Select>
+              {isOwner ? (
+                <Select
+                  label="Payment completion"
+                  description="Has the invoice been paid in full?"
+                  selectedKeys={[paymentCompletion]}
+                  onSelectionChange={(keys) => setPaymentCompletion(Array.from(keys)[0] as CompletionStatus)}
+                  variant="bordered"
+                >
+                  <SelectItem key="pending">pending</SelectItem>
+                  <SelectItem key="completed">completed</SelectItem>
+                </Select>
+              ) : (
+                <div className="flex items-center rounded-md border border-content3 px-3 text-sm text-foreground/50">
+                  Payment status is managed by the owner.
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-foreground/50 mt-2" style={{ fontFamily: "var(--font-mono)" }}>
+              The order is only marked "completed" once both are complete.
+            </p>
           </div>
 
           <Divider />
@@ -176,7 +239,7 @@ export default function OrderDetailClient({ order }: { order: Order }) {
             </div>
           )}
 
-          {order.staffAssigned?.length > 0 && (
+          {order.staffAssigned && order.staffAssigned.length > 0 && (
             <>
               <Divider />
               <div>
@@ -186,7 +249,8 @@ export default function OrderDetailClient({ order }: { order: Order }) {
                 <div className="flex flex-wrap gap-2">
                   {order.staffAssigned.map((s, i) => (
                     <Chip key={i} variant="flat" color="warning">
-                      {s.name} — ₹{s.amount || 0}
+                      {s.name}
+                      {isOwner ? ` — ₹${s.amount || 0}` : ""}
                     </Chip>
                   ))}
                 </div>
@@ -194,51 +258,54 @@ export default function OrderDetailClient({ order }: { order: Order }) {
             </>
           )}
 
-          <Divider />
-
-          <div>
-            <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-display)" }}>
-              Invoice
-            </h2>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Input
-                label="Total amount (₹)"
-                type="number"
-                variant="bordered"
-                value={invoice.totalAmount}
-                onValueChange={(v) => setInvoice({ ...invoice, totalAmount: v })}
-              />
-              <Input
-                label="Advance paid (₹)"
-                type="number"
-                variant="bordered"
-                value={invoice.advancePaid}
-                onValueChange={(v) => setInvoice({ ...invoice, advancePaid: v })}
-              />
-            </div>
-            <div className="mt-4 bg-primary/10 border border-primary/40 rounded-md px-4 py-3 flex items-center justify-between">
-              <span className="text-sm text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
-                Due amount
-              </span>
-              <span className="text-xl text-warning" style={{ fontFamily: "var(--font-display)" }}>
-                ₹{due.toLocaleString("en-IN")}
-              </span>
-            </div>
-            <div className="mt-4 flex gap-2">
-              {PAYMENT_OPTIONS.map((t) => (
-                <Button
-                  key={t}
-                  size="sm"
-                  radius="full"
-                  variant={invoice.paymentType === t ? "solid" : "bordered"}
-                  color={invoice.paymentType === t ? "secondary" : "default"}
-                  onPress={() => setInvoice({ ...invoice, paymentType: t })}
-                >
-                  {t}
-                </Button>
-              ))}
-            </div>
-          </div>
+          {isOwner && (
+            <>
+              <Divider />
+              <div>
+                <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-display)" }}>
+                  Invoice
+                </h2>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Input
+                    label="Total amount (₹)"
+                    type="number"
+                    variant="bordered"
+                    value={invoice.totalAmount}
+                    onValueChange={(v) => setInvoice({ ...invoice, totalAmount: v })}
+                  />
+                  <Input
+                    label="Advance paid (₹)"
+                    type="number"
+                    variant="bordered"
+                    value={invoice.advancePaid}
+                    onValueChange={(v) => setInvoice({ ...invoice, advancePaid: v })}
+                  />
+                </div>
+                <div className="mt-4 bg-primary/10 border border-primary/40 rounded-md px-4 py-3 flex items-center justify-between">
+                  <span className="text-sm text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
+                    Due amount
+                  </span>
+                  <span className="text-xl text-warning" style={{ fontFamily: "var(--font-display)" }}>
+                    ₹{due.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  {PAYMENT_OPTIONS.map((t) => (
+                    <Button
+                      key={t}
+                      size="sm"
+                      radius="full"
+                      variant={invoice.paymentType === t ? "solid" : "bordered"}
+                      color={invoice.paymentType === t ? "secondary" : "default"}
+                      onPress={() => setInvoice({ ...invoice, paymentType: t })}
+                    >
+                      {t}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           <Divider />
 
@@ -260,9 +327,11 @@ export default function OrderDetailClient({ order }: { order: Order }) {
             <Button color="primary" onPress={onSave} isLoading={saving} radius="sm" className="font-semibold">
               Save changes
             </Button>
-            <Button color="danger" variant="bordered" onPress={onDelete} radius="sm">
-              Delete order
-            </Button>
+            {isOwner && (
+              <Button color="danger" variant="bordered" onPress={onDelete} radius="sm">
+                Delete order
+              </Button>
+            )}
             {savedAt && <span className="text-xs text-success">Saved.</span>}
           </div>
         </CardBody>

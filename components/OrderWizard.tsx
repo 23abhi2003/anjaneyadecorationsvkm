@@ -19,6 +19,7 @@ import QtyGrid from "@/components/QtyGrid";
 import QtyField from "@/components/QtyField";
 import LocationField from "@/components/LocationField";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/lib/Auth";
 import {
   PROGRAM_TYPES,
   TENT_SIZES,
@@ -180,7 +181,7 @@ const STEP_TITLES: Record<StepKey, string> = {
   review: "Review & save",
 };
 
-function useSteps(serviceType: ServiceType): StepKey[] {
+function useSteps(serviceType: ServiceType, includeInvoice: boolean): StepKey[] {
   return useMemo(() => {
     const steps: StepKey[] = ["customer", "serviceType"];
     if (!serviceType) return steps;
@@ -191,9 +192,13 @@ function useSteps(serviceType: ServiceType): StepKey[] {
     if (serviceType === "decoration" || serviceType === "both") {
       steps.push("frames-cloth", "ceiling-poles", "flowers");
     }
-    steps.push("staff", "invoice", "review");
+    steps.push("staff");
+    // Staff accounts can create/edit orders but never touch invoice amounts —
+    // that step (and its fields on the review screen) is owner-only.
+    if (includeInvoice) steps.push("invoice");
+    steps.push("review");
     return steps;
-  }, [serviceType]);
+  }, [serviceType, includeInvoice]);
 }
 
 function ChoiceChips({
@@ -492,6 +497,8 @@ export default function OrderWizard({
   initialOrder?: Order;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const isEdit = !!initialOrder;
   const [form, setForm] = useState<WizardForm>(() => (initialOrder ? orderToForm(initialOrder) : emptyForm));
   // Editing an existing order jumps straight to the review step, where every section has its
@@ -499,7 +506,7 @@ export default function OrderWizard({
   const [stepIdx, setStepIdx] = useState(isEdit ? Number.MAX_SAFE_INTEGER : 0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const steps = useSteps(form.serviceType);
+  const steps = useSteps(form.serviceType, isOwner);
   const step = steps[stepIdx] || "customer";
 
   useEffect(() => {
@@ -797,7 +804,21 @@ export default function OrderWizard({
           )}
 
           {step === "staff" && (
-            <StaffStep staffList={staffList} assigned={form.staffAssigned} onChange={(a) => setPath("staffAssigned", a)} />
+            <>
+              <StaffStep staffList={staffList} assigned={form.staffAssigned} onChange={(a) => setPath("staffAssigned", a)} showAmount={isOwner} />
+              {/* Staff accounts skip the (owner-only) invoice step, so notes live here instead. */}
+              {!isOwner && (
+                <Textarea
+                  label="Notes"
+                  placeholder="Anything the office should know about this order…"
+                  variant="bordered"
+                  value={form.notes}
+                  onValueChange={(v) => setPath("notes", v)}
+                  minRows={3}
+                  className="mt-4"
+                />
+              )}
+            </>
           )}
 
           {step === "invoice" && (
@@ -850,7 +871,7 @@ export default function OrderWizard({
 
           {step === "review" && (
             <>
-              <ReviewSummary form={form} dueAmount={dueAmount} onEdit={goToStep} />
+              <ReviewSummary form={form} dueAmount={dueAmount} onEdit={goToStep} isOwner={isOwner} />
               {error && <p className="text-sm text-danger">{error}</p>}
             </>
           )}
@@ -887,10 +908,13 @@ function StaffStep({
   staffList,
   assigned,
   onChange,
+  showAmount = true,
 }: {
   staffList: StaffMember[];
   assigned: StaffAssignment[];
   onChange: (assigned: StaffAssignment[]) => void;
+  /** Staff-role users can assign staff to an order but not see/set payout amounts. */
+  showAmount?: boolean;
 }) {
   function toggle(staffId: string, name: string): void {
     const exists = assigned.find((a) => a.staffId === staffId);
@@ -915,7 +939,7 @@ function StaffStep({
               <input type="checkbox" checked={!!picked} onChange={() => toggle(s.id, s.name)} />
               {s.name}
             </label>
-            {picked && (
+            {picked && showAmount && (
               <Input
                 type="number"
                 size="sm"
@@ -953,10 +977,12 @@ function ReviewSummary({
   form,
   dueAmount,
   onEdit,
+  isOwner,
 }: {
   form: WizardForm;
   dueAmount: number;
   onEdit: (step: StepKey) => void;
+  isOwner: boolean;
 }) {
   const rows: Array<{ label: string; entries: Array<[string, string]>; step: StepKey }> = [];
   const pushGroup = (label: string, obj: QtyMap) => {
@@ -1037,33 +1063,35 @@ function ReviewSummary({
         </div>
         <p className="text-foreground/80">
           {form.staffAssigned.length > 0
-            ? form.staffAssigned.map((a) => `${a.name} (₹${a.amount || 0})`).join(" · ")
+            ? form.staffAssigned.map((a) => (isOwner ? `${a.name} (₹${a.amount || 0})` : a.name)).join(" · ")
             : "None assigned yet."}
         </p>
       </div>
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <p className="uppercase tracking-wide text-secondary text-xs" style={{ fontFamily: "var(--font-mono)" }}>
-            Invoice
-          </p>
-          <EditButton onPress={() => onEdit("invoice")} />
+      {isOwner && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="uppercase tracking-wide text-secondary text-xs" style={{ fontFamily: "var(--font-mono)" }}>
+              Invoice
+            </p>
+            <EditButton onPress={() => onEdit("invoice")} />
+          </div>
+          <div className="flex justify-between bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
+            <span>
+              Total ₹{form.invoice.totalAmount || 0} · Advance ₹{form.invoice.advancePaid || 0} · Payment{" "}
+              {form.invoice.paymentType || "—"}
+            </span>
+            <span className="text-warning" style={{ fontFamily: "var(--font-display)" }}>
+              Due ₹{dueAmount.toLocaleString("en-IN")}
+            </span>
+          </div>
         </div>
-        <div className="flex justify-between bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
-          <span>
-            Total ₹{form.invoice.totalAmount || 0} · Advance ₹{form.invoice.advancePaid || 0} · Payment{" "}
-            {form.invoice.paymentType || "—"}
-          </span>
-          <span className="text-warning" style={{ fontFamily: "var(--font-display)" }}>
-            Due ₹{dueAmount.toLocaleString("en-IN")}
-          </span>
-        </div>
-      </div>
+      )}
       <div>
         <div className="flex items-center justify-between mb-1">
           <p className="uppercase tracking-wide text-secondary text-xs" style={{ fontFamily: "var(--font-mono)" }}>
             Notes
           </p>
-          <EditButton onPress={() => onEdit("invoice")} />
+          <EditButton onPress={() => onEdit(isOwner ? "invoice" : "staff")} />
         </div>
         <p className="text-foreground/80 whitespace-pre-wrap">{form.notes.trim() || "No notes added."}</p>
       </div>

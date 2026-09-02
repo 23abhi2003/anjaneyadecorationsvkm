@@ -74,7 +74,7 @@ export default function Header({
           <DropdownItem key="whoami" isReadOnly textValue={displayName} className="cursor-default opacity-100 data-[hover=true]:bg-transparent">
             <p className="text-sm font-semibold text-[#241129]">{user?.name || "Signed in"}</p>
             <p className="text-xs text-[#241129]/50" style={{ fontFamily: "var(--font-mono)" }}>
-              {user?.phone}
+              {user?.phone} &middot; <span className="capitalize">{user?.role}</span>
             </p>
           </DropdownItem>
           <DropdownItem key="support" href="mailto:anjaneyadecors766@gmail.com" className="sm:hidden" startContent={<LifeBuoy size={16} />}>

@@ -6,6 +6,7 @@ import { Button, Chip, Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import DashboardSearch from "@/components/DashboardSearch";
 import NavCard from "@/components/NavCard";
+import { useAuth } from "@/lib/Auth";
 import type { Order, Customer, StaffMember } from "@/lib/types";
 
 function daysUntil(dateStr: string | null): number {
@@ -27,6 +28,8 @@ function programLabel(o: Order): string {
 }
 
 export default function HomePage() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -121,23 +124,27 @@ export default function HomePage() {
         <NavCard href="/staff" title="Staff" count={staff.length} sub="Assignments & pay" />
       </section>
 
-      <section className="grid sm:grid-cols-3 gap-4">
-        <div className="bg-content1 rounded-lg p-5 shadow-lg">
-          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-            Collected so far
-          </p>
-          <p className="text-2xl text-success mt-1" style={{ fontFamily: "var(--font-display)" }}>
-            ₹{totalCollected.toLocaleString("en-IN")}
-          </p>
-        </div>
-        <div className="bg-content1 rounded-lg p-5 shadow-lg">
-          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-            Pending dues
-          </p>
-          <p className="text-2xl text-warning mt-1" style={{ fontFamily: "var(--font-display)" }}>
-            ₹{totalDue.toLocaleString("en-IN")}
-          </p>
-        </div>
+      <section className={`grid gap-4 ${isOwner ? "sm:grid-cols-3" : "sm:grid-cols-1"}`}>
+        {isOwner && (
+          <div className="bg-content1 rounded-lg p-5 shadow-lg">
+            <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+              Collected so far
+            </p>
+            <p className="text-2xl text-success mt-1" style={{ fontFamily: "var(--font-display)" }}>
+              ₹{totalCollected.toLocaleString("en-IN")}
+            </p>
+          </div>
+        )}
+        {isOwner && (
+          <div className="bg-content1 rounded-lg p-5 shadow-lg">
+            <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+              Pending dues
+            </p>
+            <p className="text-2xl text-warning mt-1" style={{ fontFamily: "var(--font-display)" }}>
+              ₹{totalDue.toLocaleString("en-IN")}
+            </p>
+          </div>
+        )}
         <div className="bg-content1 rounded-lg p-5 shadow-lg">
           <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
             Orders in progress

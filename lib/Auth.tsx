@@ -1,12 +1,14 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { AUTH_STORAGE_KEY } from "@/lib/api";
+import { apiFetch, AUTH_STORAGE_KEY } from "@/lib/api";
+import type { Role } from "@/lib/types";
 
 export interface AuthUser {
-  id?: string;
+  staffId?: string;
   name?: string;
   phone: string;
+  role: Role;
 }
 
 interface StoredSession {
@@ -19,20 +21,14 @@ interface AuthContextValue {
   token: string | null;
   /** True until the stored session (if any) has been read from localStorage. */
   loading: boolean;
-  login: (phone: string, pin: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Standard sign-in with role + phone + PIN, checked against the backend. */
+  login: (role: Role, phone: string, pin: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Signs in directly from a token (e.g. `?token=...` on a shared link). Verifies with the backend. */
+  loginWithToken: (token: string) => Promise<boolean>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-/**
- * Default (hardcoded) sign-in credentials.
- * NOTE: this lives in client-side JS, so it's visible to anyone who opens
- * dev tools. Fine for a single-admin internal tool; move this check to the
- * backend if it ever needs real security.
- */
-const DEFAULT_PHONE = "9704452180";
-const DEFAULT_PIN = "2003";
 
 function readStoredSession(): StoredSession | null {
   try {
@@ -44,6 +40,10 @@ function readStoredSession(): StoredSession | null {
   } catch {
     return null;
   }
+}
+
+function persistSession(session: StoredSession): void {
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -60,22 +60,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
-  async function login(phone: string, pin: string): Promise<{ ok: boolean; error?: string }> {
-    // Local check against the default credentials — no backend call needed.
-    if (phone.trim() === DEFAULT_PHONE && pin.trim() === DEFAULT_PIN) {
-      const nextUser: AuthUser = { phone: DEFAULT_PHONE, name: "Admin" };
-      const session: StoredSession = {
-        token: "local-" + Date.now().toString(36),
-        user: nextUser,
-      };
-
-      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  async function login(role: Role, phone: string, pin: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await apiFetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, phone: phone.trim(), pin: pin.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { token?: string; user?: AuthUser; error?: string };
+      if (!res.ok || !data.token || !data.user) {
+        return { ok: false, error: data.error || "Invalid phone number or PIN." };
+      }
+      const session: StoredSession = { token: data.token, user: data.user };
+      persistSession(session);
       setToken(session.token);
       setUser(session.user);
       return { ok: true };
+    } catch {
+      return { ok: false, error: "Could not reach the server. Check your connection and try again." };
     }
+  }
 
-    return { ok: false, error: "Invalid phone number or PIN." };
+  async function loginWithToken(candidateToken: string): Promise<boolean> {
+    try {
+      const res = await apiFetch("/api/auth/verify", {
+        headers: { Authorization: `Bearer ${candidateToken}` },
+      });
+      if (!res.ok) return false;
+      const data = (await res.json().catch(() => ({}))) as { user?: AuthUser };
+      if (!data.user) return false;
+      const session: StoredSession = { token: candidateToken, user: data.user };
+      persistSession(session);
+      setToken(session.token);
+      setUser(session.user);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function logout(): void {
@@ -84,7 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <AuthContext.Provider value={{ user, token, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, token, loading, login, loginWithToken, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {

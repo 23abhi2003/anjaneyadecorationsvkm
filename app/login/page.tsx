@@ -5,12 +5,10 @@ import Image from "next/image";
 import { Input, Button } from "@heroui/react";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/Auth";
-import type { Role } from "@/lib/types";
 
 export default function LoginPage() {
   const { login } = useAuth();
 
-  const [role, setRole] = useState<Role>("owner");
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
@@ -27,7 +25,9 @@ export default function LoginPage() {
     }
 
     setSubmitting(true);
-    const result = await login(role, phone.trim(), pin.trim());
+    // No role picker: the backend figures out whether this phone number
+    // belongs to the owner or a staff member and signs in accordingly.
+    const result = await login(phone.trim(), pin.trim());
     setSubmitting(false);
 
     if (!result.ok) {
@@ -54,25 +54,6 @@ export default function LoginPage() {
             Sign in to your account
           </h1>
           <p className="text-sm text-[#241129]/60 mt-1 mb-6">to continue to Anjaneya Decorations</p>
-
-          {/* Owner / Staff toggle */}
-          <div className="grid grid-cols-2 gap-2 mb-5 p-1 rounded-lg bg-[#F8F4E6] border border-[#D9A427]/20">
-            {(["owner", "staff"] as Role[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => {
-                  setRole(r);
-                  setError("");
-                }}
-                className={`py-2 rounded-md text-sm font-semibold capitalize transition-colors ${
-                  role === r ? "bg-[#8B4A15] text-[#F8F4E6]" : "text-[#241129]/60 hover:text-[#241129]"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <Input
@@ -128,7 +109,7 @@ export default function LoginPage() {
               className="w-full font-semibold"
               isLoading={submitting}
             >
-              Sign In as {role === "owner" ? "Owner" : "Staff"}
+              Sign In
             </Button>
           </form>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Spinner } from "@heroui/react";
 import Providers from "@/app/providers";
 import Sidebar from "@/components/Sidebar";
@@ -19,12 +19,10 @@ const SIDEBAR_COLLAPSED_KEY = "anjaneya_sidebar_collapsed";
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user, loading, logout, loginWithToken } = useAuth();
+  const { user, loading, logout } = useAuth();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [tokenLoginChecked, setTokenLoginChecked] = useState(false);
 
   // Restore the persisted collapse preference after mount (avoids SSR/client mismatch).
   useEffect(() => {
@@ -33,30 +31,6 @@ function Shell({ children }: { children: ReactNode }) {
     } catch {
       // localStorage unavailable — fall back to expanded.
     }
-  }, []);
-
-  // Auto-login: visiting any URL with `?token=...` (e.g. a link shared over
-  // WhatsApp) signs the visitor straight in without the login form, then
-  // strips the token out of the URL bar so it isn't re-shared accidentally.
-  useEffect(() => {
-    const urlToken = searchParams?.get("token");
-    if (!urlToken) {
-      setTokenLoginChecked(true);
-      return;
-    }
-    let cancelled = false;
-    loginWithToken(urlToken).finally(() => {
-      if (cancelled) return;
-      setTokenLoginChecked(true);
-      const params = new URLSearchParams(searchParams?.toString());
-      params.delete("token");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function toggleCollapsed(): void {
@@ -74,16 +48,14 @@ function Shell({ children }: { children: ReactNode }) {
   const isLoginRoute = pathname === "/login";
 
   // Route guard: bounce signed-out visitors to /login, and signed-in visitors away from it.
-  // Waits for the `?token=` auto-login check above to finish first, so a
-  // shared link doesn't flash the login screen before the token is verified.
   useEffect(() => {
-    if (loading || !tokenLoginChecked) return;
+    if (loading) return;
     if (!user && !isLoginRoute) {
       router.replace("/login");
     } else if (user && isLoginRoute) {
       router.replace("/");
     }
-  }, [loading, user, isLoginRoute, router, tokenLoginChecked]);
+  }, [loading, user, isLoginRoute, router]);
 
   // The login page renders its own full-screen layout — no sidebar/header chrome.
   if (isLoginRoute) {
@@ -92,7 +64,7 @@ function Shell({ children }: { children: ReactNode }) {
 
   // While the session is being resolved (or a redirect is in flight), show a
   // minimal loading state instead of flashing protected content.
-  if (loading || !tokenLoginChecked || !user) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#241129]">
         <Spinner color="primary" label="Loading..." labelColor="foreground" />

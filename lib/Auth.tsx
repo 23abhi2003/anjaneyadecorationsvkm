@@ -12,19 +12,15 @@ export interface AuthUser {
 }
 
 interface StoredSession {
-  token: string;
   user: AuthUser;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
-  token: string | null;
   /** True until the stored session (if any) has been read from localStorage. */
   loading: boolean;
-  /** Standard sign-in with role + phone + PIN, checked against the backend. */
-  login: (role: Role, phone: string, pin: string) => Promise<{ ok: boolean; error?: string }>;
-  /** Signs in directly from a token (e.g. `?token=...` on a shared link). Verifies with the backend. */
-  loginWithToken: (token: string) => Promise<boolean>;
+  /** Standard sign-in with phone + PIN, checked against the backend. Role is auto-detected server-side. */
+  login: (phone: string, pin: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
 }
 
@@ -35,7 +31,7 @@ function readStoredSession(): StoredSession | null {
     const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredSession;
-    if (!parsed?.token) return null;
+    if (!parsed?.user) return null;
     return parsed;
   } catch {
     return null;
@@ -48,32 +44,29 @@ function persistSession(session: StoredSession): void {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const stored = readStoredSession();
     if (stored) {
-      setToken(stored.token);
       setUser(stored.user);
     }
     setLoading(false);
   }, []);
 
-  async function login(role: Role, phone: string, pin: string): Promise<{ ok: boolean; error?: string }> {
+  async function login(phone: string, pin: string): Promise<{ ok: boolean; error?: string }> {
     try {
       const res = await apiFetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, phone: phone.trim(), pin: pin.trim() }),
+        body: JSON.stringify({ phone: phone.trim(), pin: pin.trim() }),
       });
-      const data = (await res.json().catch(() => ({}))) as { token?: string; user?: AuthUser; error?: string };
-      if (!res.ok || !data.token || !data.user) {
+      const data = (await res.json().catch(() => ({}))) as { user?: AuthUser; error?: string };
+      if (!res.ok || !data.user) {
         return { ok: false, error: data.error || "Invalid phone number or PIN." };
       }
-      const session: StoredSession = { token: data.token, user: data.user };
+      const session: StoredSession = { user: data.user };
       persistSession(session);
-      setToken(session.token);
       setUser(session.user);
       return { ok: true };
     } catch {
@@ -81,35 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function loginWithToken(candidateToken: string): Promise<boolean> {
-    try {
-      const res = await apiFetch("/api/auth/verify", {
-        headers: { Authorization: `Bearer ${candidateToken}` },
-      });
-      if (!res.ok) return false;
-      const data = (await res.json().catch(() => ({}))) as { user?: AuthUser };
-      if (!data.user) return false;
-      const session: StoredSession = { token: candidateToken, user: data.user };
-      persistSession(session);
-      setToken(session.token);
-      setUser(session.user);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   function logout(): void {
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
-    setToken(null);
     setUser(null);
   }
 
-  return (
-    <AuthContext.Provider value={{ user, token, loading, login, loginWithToken, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {

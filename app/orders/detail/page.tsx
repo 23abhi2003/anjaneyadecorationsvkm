@@ -6,15 +6,27 @@ import { useSearchParams } from "next/navigation";
 import { Spinner, Button } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import OrderDetailClient from "@/components/OrderDetailClient";
-import type { Order } from "@/lib/types";
+import type { Order, StaffMember } from "@/lib/types";
 
 function OrderDetailInner() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
 
   const [order, setOrder] = useState<Order | null>(null);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  // Order.staffAssigned only stores {staffId, name, amount} — no phone. Pull the
+  // full staff list once so the "send to staff" WhatsApp buttons know which
+  // number to open. Failure here is non-fatal; the order still renders, it
+  // just won't be able to show a phone-based send button for any staff member.
+  useEffect(() => {
+    apiFetch("/api/staff")
+      .then((res) => (res.ok ? (res.json() as Promise<StaffMember[]>) : []))
+      .then((data) => setStaffList(data))
+      .catch(() => setStaffList([]));
+  }, []);
 
   useEffect(() => {
     if (!id) {
@@ -67,7 +79,7 @@ function OrderDetailInner() {
     );
   }
 
-  return <OrderDetailClient order={order} />;
+  return <OrderDetailClient order={order} staffList={staffList} />;
 }
 
 export default function OrderDetailPage() {

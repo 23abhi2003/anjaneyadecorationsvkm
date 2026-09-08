@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardBody, Divider, Input, Button, Chip, Select, SelectItem, Textarea } from "@heroui/react";
 import Image from "next/image";
-import type { Order, OrderStatus, CompletionStatus } from "@/lib/types";
-import { collectItemLines, mapsLinkForOrder } from "@/lib/orderDisplay";
-import { generateInvoicePdf, generateStaffReportPdf } from "@/lib/pdf";
+import type { Order, OrderStatus, CompletionStatus, StaffMember } from "@/lib/types";
+import { collectItemLines, mapsLinkForOrder, waLink, buildStaffWhatsAppMessage } from "@/lib/orderDisplay";
+import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile } from "@/lib/pdf";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 
@@ -19,7 +19,7 @@ const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   completed: "secondary",
 };
 
-export default function OrderDetailClient({ order }: { order: Order }) {
+export default function OrderDetailClient({ order, staffList = [] }: { order: Order; staffList?: StaffMember[] }) {
   const router = useRouter();
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
@@ -35,6 +35,11 @@ export default function OrderDetailClient({ order }: { order: Order }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pdfBusy, setPdfBusy] = useState<"invoice" | "report" | null>(null);
+  // Which staff-send button is currently mid-flight — a staffId, "all", or null.
+  const [staffSendBusy, setStaffSendBusy] = useState<string | null>(null);
+  // Remaining staff to message after "Send to Staff (all)" — browsers only allow ONE
+  // window.open() per real click, so the rest wait here for a "Send to next" click.
+  const [staffQueue, setStaffQueue] = useState<{ staffId: string; name: string }[]>([]);
 
   const total = parseFloat(invoice.totalAmount) || 0;
   const advance = parseFloat(invoice.advancePaid) || 0;
@@ -118,6 +123,97 @@ export default function OrderDetailClient({ order }: { order: Order }) {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  /** Looks up a staff member's saved phone number from their id. Empty string if none on file. */
+  function phoneForStaffId(staffId: string): string {
+    return staffList.find((s) => s.id === staffId)?.phone || "";
+  }
+
+  /**
+   * "Send" for one staff member: opens a WhatsApp chat (via wa.me — no API
+   * key, no token, exactly like clicking the link yourself) to their saved
+   * number with a message that includes the date, then downloads the staff
+   * report PDF so it's sitting in Downloads ready to attach in that chat by
+   * hand. WhatsApp only lets a real Business API account attach files
+   * automatically; this manual two-step is the no-token equivalent.
+   */
+  async function sendToStaff(staffId: string, name: string): Promise<void> {
+    const link = waLink(phoneForStaffId(staffId), buildStaffWhatsAppMessage(order, name));
+    if (!link) {
+      alert(`${name} doesn't have a phone number on file yet — add one on the Staff page first.`);
+      return;
+    }
+    // Open the chat tab first, synchronously, in the same click so popup blockers don't catch it.
+    window.open(link, "_blank", "noopener,noreferrer");
+    setStaffSendBusy(staffId);
+    try {
+      await generateStaffReportPdf({ ...order, status: overallStatus, notes });
+    } finally {
+      setStaffSendBusy(null);
+    }
+  }
+
+  /**
+   * "Send" to every assigned staff member.
+   *
+   * Preferred path — the OS/native share sheet (`navigator.share`, no API key,
+   * no token, just the same "Share" action any app on the phone offers): the
+   * person taps Share once, picks WhatsApp, and WhatsApp's own multi-select
+   * screen lets them forward the PDF + message to every staff chat at once.
+   * That's the only way to reach several individual chats from one action
+   * without WhatsApp's paid Business API.
+   *
+   * Fallback — most desktop browsers can't share files this way. There,
+   * browsers also only trust ONE new-tab open per real click (a loop of
+   * window.open() calls just gets the rest silently blocked), so instead the
+   * first staff member's chat opens immediately and the rest queue up behind
+   * a "Send to next" button — each click is a fresh real click, so it isn't
+   * blocked either.
+   */
+  async function sendToAllStaff(): Promise<void> {
+    const targets = order.staffAssigned.filter((s) => phoneForStaffId(s.staffId));
+    if (targets.length === 0) {
+      alert("None of the assigned staff have a phone number on file yet — add numbers on the Staff page first.");
+      return;
+    }
+    setStaffSendBusy("all");
+    try {
+      const file = await getStaffReportPdfFile({ ...order, status: overallStatus, notes });
+      const names = targets.map((t) => t.name).join(", ");
+      const message = buildStaffWhatsAppMessage(order, names);
+
+      const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
+      if (nav.canShare?.({ files: [file] }) && nav.share) {
+        try {
+          await nav.share({ files: [file], text: message, title: `Staff report — ${order.id}` });
+          return; // done — WhatsApp's own screen handled sending to everyone
+        } catch (err) {
+          // User cancelled the share sheet — not an error, just stop here.
+          if ((err as { name?: string })?.name === "AbortError") return;
+          // Any other failure (e.g. no share target chosen) falls through to the tab-based flow below.
+        }
+      }
+
+      // Fallback: open the first chat now, queue the rest, and also trigger a
+      // normal download since this path can't hand the PDF over automatically.
+      const [first, ...rest] = targets;
+      const link = waLink(phoneForStaffId(first.staffId), buildStaffWhatsAppMessage(order, first.name));
+      if (link) window.open(link, "_blank", "noopener,noreferrer");
+      setStaffQueue(rest);
+      await generateStaffReportPdf({ ...order, status: overallStatus, notes });
+    } finally {
+      setStaffSendBusy(null);
+    }
+  }
+
+  /** Advances the queue by one — called from a real click, so its window.open() isn't blocked. */
+  function sendToNextInQueue(): void {
+    if (staffQueue.length === 0) return;
+    const [next, ...rest] = staffQueue;
+    const link = waLink(phoneForStaffId(next.staffId), buildStaffWhatsAppMessage(order, next.name));
+    if (link) window.open(link, "_blank", "noopener,noreferrer");
+    setStaffQueue(rest);
+  }
+
   const itemGroups = collectItemLines(order);
   const mapsLink = mapsLinkForOrder(order);
 
@@ -172,6 +268,18 @@ export default function OrderDetailClient({ order }: { order: Order }) {
         <Button color="success" radius="sm" variant="solid" onPress={onShareWhatsApp} className="font-semibold">
           Share on WhatsApp
         </Button>
+        {isOwner && order.staffAssigned && order.staffAssigned.length > 0 && (
+          <Button
+            color="success"
+            radius="sm"
+            variant="bordered"
+            onPress={sendToAllStaff}
+            isLoading={staffSendBusy === "all"}
+            className="font-semibold"
+          >
+            Send to Staff (WhatsApp + PDF)
+          </Button>
+        )}
       </div>
 
       <Card className="bg-content1">
@@ -248,12 +356,45 @@ export default function OrderDetailClient({ order }: { order: Order }) {
                 </h2>
                 <div className="flex flex-wrap gap-2">
                   {order.staffAssigned.map((s, i) => (
-                    <Chip key={i} variant="flat" color="warning">
-                      {s.name}
-                      {isOwner ? ` — ₹${s.amount || 0}` : ""}
-                    </Chip>
+                    <div key={i} className="flex items-center gap-1">
+                      <Chip variant="flat" color="warning">
+                        {s.name}
+                        {isOwner ? ` — ₹${s.amount || 0}` : ""}
+                      </Chip>
+                      {isOwner && phoneForStaffId(s.staffId) && (
+                        <Button
+                          size="sm"
+                          isIconOnly
+                          radius="full"
+                          color="success"
+                          variant="flat"
+                          isLoading={staffSendBusy === s.staffId}
+                          onPress={() => sendToStaff(s.staffId, s.name)}
+                          title={`Send WhatsApp + PDF to ${s.name}`}
+                          aria-label={`Send WhatsApp + PDF to ${s.name}`}
+                        >
+                          {staffSendBusy === s.staffId ? "" : "💬"}
+                        </Button>
+                      )}
+                    </div>
                   ))}
                 </div>
+                {isOwner && order.staffAssigned.some((s) => !phoneForStaffId(s.staffId)) && (
+                  <p className="text-xs text-foreground/40 mt-2" style={{ fontFamily: "var(--font-mono)" }}>
+                    Staff without a 💬 button don&apos;t have a phone number on file yet — add one on the Staff page.
+                  </p>
+                )}
+                {isOwner && staffQueue.length > 0 && (
+                  <div className="mt-3 flex items-center gap-2 bg-success/10 border border-success/30 rounded-md px-3 py-2">
+                    <span className="text-xs text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
+                      Sent to {order.staffAssigned.length - staffQueue.length} of {order.staffAssigned.length} — your
+                      browser only opens one WhatsApp tab per click.
+                    </span>
+                    <Button size="sm" color="success" radius="sm" onPress={sendToNextInQueue} className="font-semibold">
+                      Send to next ({staffQueue[0].name})
+                    </Button>
+                  </div>
+                )}
               </div>
             </>
           )}

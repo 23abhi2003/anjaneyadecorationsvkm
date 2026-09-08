@@ -174,11 +174,8 @@ export async function generateInvoicePdf(order: Order): Promise<void> {
   doc.save(`${order.id}-invoice.pdf`);
 }
 
-/**
- * Staff-facing job sheet: what to bring, where to go, who to contact.
- * Deliberately excludes money — total/advance/due are never printed here.
- */
-export async function generateStaffReportPdf(order: Order): Promise<void> {
+/** Builds the staff report doc without saving/downloading it — shared by the download and share-sheet entry points below. */
+async function buildStaffReportDoc(order: Order): Promise<jsPDF> {
   const doc = new jsPDF();
   let y = await addHeader(doc, "Staff Report", order.id);
 
@@ -232,5 +229,27 @@ export async function generateStaffReportPdf(order: Order): Promise<void> {
     });
   }
 
+  return doc;
+}
+
+/**
+ * Staff-facing job sheet: what to bring, where to go, who to contact.
+ * Deliberately excludes money — total/advance/due are never printed here.
+ */
+export async function generateStaffReportPdf(order: Order): Promise<void> {
+  const doc = await buildStaffReportDoc(order);
   doc.save(`${order.id}-staff-report.pdf`);
+}
+
+/**
+ * Same staff report, but as a `File` instead of an auto-download — for handing
+ * to the OS share sheet (`navigator.share`), which is the only way (without
+ * WhatsApp's paid Business API) to send one PDF to *several* WhatsApp chats
+ * from a single user action: the share sheet lets the person multi-select
+ * every staff chat to forward to at once, inside WhatsApp's own UI.
+ */
+export async function getStaffReportPdfFile(order: Order): Promise<File> {
+  const doc = await buildStaffReportDoc(order);
+  const blob = doc.output("blob");
+  return new File([blob], `${order.id}-staff-report.pdf`, { type: "application/pdf" });
 }

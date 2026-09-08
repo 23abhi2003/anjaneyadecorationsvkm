@@ -1,5 +1,49 @@
 import type { Order } from "./types";
 
+/**
+ * Normalizes a saved phone number into the digits-only form wa.me expects.
+ * A bare 10-digit local number is assumed Indian and gets `91` prefixed;
+ * anything already longer (has a country code) is left as-is.
+ */
+export function waDigits(phone: string | undefined | null): string {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length === 10 ? `91${digits}` : digits;
+}
+
+/** Builds a `wa.me` deep link that opens a chat with a pre-filled message. No API key or token involved — this just opens WhatsApp (app or web) the same way a person clicking the link by hand would. */
+export function waLink(phone: string | undefined | null, message: string): string | null {
+  const digits = waDigits(phone);
+  if (!digits) return null;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Message sent to an assigned staff member's WhatsApp when the owner taps
+ * "Send" on an order. Includes today's date (the date the message was sent,
+ * not the event date) since the notebook spec called that out specifically.
+ * The staff report PDF itself can't be attached through a wa.me link (that
+ * would need the paid WhatsApp Business API), so the flow is: download the
+ * PDF, then open this chat and attach it by hand — same "manual, no token"
+ * pattern as the existing customer WhatsApp share.
+ */
+export function buildStaffWhatsAppMessage(order: Order, staffName: string): string {
+  const sentDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const link = mapsLinkForOrder(order);
+  const lines = [
+    `Anjaneya Decorations — ${order.id}`,
+    `Hi ${staffName}, you're assigned to this job:`,
+    `Customer: ${order.customer?.name || "-"}`,
+    `Program: ${order.program?.type || order.serviceType}`,
+    `Event date: ${order.eventDate || "-"}`,
+    order.customer?.address ? `Address: ${order.customer.address}` : "",
+    link ? `Location: ${link}` : "",
+    `Sent: ${sentDate}`,
+    `— the staff report PDF is attached separately.`,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
 export function mapsLinkForOrder(order: Order): string | null {
   const loc = order.customer.location;
   if (loc) {

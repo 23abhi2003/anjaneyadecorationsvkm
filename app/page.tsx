@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Button, Chip, Spinner } from "@heroui/react";
+import { Button, Card, Chip, Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import DashboardSearch from "@/components/DashboardSearch";
 import NavCard from "@/components/NavCard";
@@ -27,6 +27,31 @@ function programLabel(o: Order): string {
   return program?.type || o.serviceType;
 }
 
+/** Has the physical order (tent/decoration work) been marked done? Defaults to "pending", mirroring OrderDetailClient. */
+function isOrderDone(o: Order): boolean {
+  return (o.orderCompletionStatus || "pending") === "completed";
+}
+
+/** Has the invoice been paid in full? Defaults to "pending". */
+function isPaymentDone(o: Order): boolean {
+  return (o.paymentCompletionStatus || "pending") === "completed";
+}
+
+function orderTotal(o: Order): number {
+  return parseFloat(o.invoice?.totalAmount || "0") || 0;
+}
+
+function orderAdvance(o: Order): number {
+  return parseFloat(o.invoice?.advancePaid || "0") || 0;
+}
+
+function orderDue(o: Order): number {
+  return Math.max(orderTotal(o) - orderAdvance(o), 0);
+}
+
+/** Which dashboard card is currently driving the "Total orders" list below. */
+type DashboardFilter = "collected" | "pending" | "progress" | null;
+
 export default function HomePage() {
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
@@ -35,6 +60,10 @@ export default function HomePage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Clicking "Collected so far" or "Pending dues" filters + sorts the "Total
+  // orders" list below to just those orders, instead of navigating away.
+  const [filter, setFilter] = useState<DashboardFilter>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +98,35 @@ export default function HomePage() {
     };
   }, []);
 
+  // Fully done: order work finished AND the invoice fully paid.
+  const collectedOrders = useMemo(
+    () => orders.filter((o) => isOrderDone(o) && isPaymentDone(o)),
+    [orders]
+  );
+  const totalCollected = collectedOrders.reduce((sum, o) => sum + orderTotal(o), 0);
+
+  // Order work is done, but the invoice still has money outstanding.
+  const pendingDueOrders = useMemo(
+    () => orders.filter((o) => isOrderDone(o) && !isPaymentDone(o)),
+    [orders]
+  );
+  const totalDue = pendingDueOrders.reduce((sum, o) => sum + orderDue(o), 0);
+
+  const pendingOrders = orders.filter((o) => o.status !== "completed").length;
+
+  // The list the "Total orders" section actually renders: either the default
+  // 5 most-recent orders, or — when a money card is active — every matching
+  // order sorted by the amount that made it match (largest first).
+  const displayedOrders = useMemo(() => {
+    if (filter === "collected") {
+      return [...collectedOrders].sort((a, b) => orderTotal(b) - orderTotal(a));
+    }
+    if (filter === "pending") {
+      return [...pendingDueOrders].sort((a, b) => orderDue(b) - orderDue(a));
+    }
+    return orders.slice(0, 5);
+  }, [filter, collectedOrders, pendingDueOrders, orders]);
+
   if (loading) {
     return (
       <div className="flex justify-center py-24">
@@ -88,13 +146,11 @@ export default function HomePage() {
     })
     .sort((a, b) => new Date(a.eventDate ?? 0).getTime() - new Date(b.eventDate ?? 0).getTime());
 
-  const totalCollected = orders.reduce((sum, o) => sum + (parseFloat(o.invoice?.advancePaid || "0") || 0), 0);
-  const totalDue = orders.reduce((sum, o) => {
-    const total = parseFloat(o.invoice?.totalAmount || "0") || 0;
-    const advance = parseFloat(o.invoice?.advancePaid || "0") || 0;
-    return sum + Math.max(total - advance, 0);
-  }, 0);
-  const pendingOrders = orders.filter((o) => o.status !== "completed").length;
+  function toggleFilter(next: Exclude<DashboardFilter, null>): void {
+    setFilter((cur) => (cur === next ? null : next));
+  }
+
+  const totalOrdersTitle = filter === "collected" ? "Collected so far" : filter === "pending" ? "Pending dues" : "Total orders";
 
   return (
     <div className="space-y-10">
@@ -126,24 +182,44 @@ export default function HomePage() {
 
       <section className={`grid gap-4 ${isOwner ? "sm:grid-cols-3" : "sm:grid-cols-1"}`}>
         {isOwner && (
-          <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <Card
+            isPressable
+            isHoverable
+            onPress={() => toggleFilter("collected")}
+            className={`bg-content1 p-5 text-left shadow-lg transition-all ${
+              filter === "collected" ? "ring-2 ring-success" : ""
+            }`}
+          >
             <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
               Collected so far
             </p>
             <p className="text-2xl text-success mt-1" style={{ fontFamily: "var(--font-display)" }}>
               ₹{totalCollected.toLocaleString("en-IN")}
             </p>
-          </div>
+            <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+              {collectedOrders.length} order{collectedOrders.length === 1 ? "" : "s"} fully paid &middot; tap to view
+            </p>
+          </Card>
         )}
         {isOwner && (
-          <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <Card
+            isPressable
+            isHoverable
+            onPress={() => toggleFilter("pending")}
+            className={`bg-content1 p-5 text-left shadow-lg transition-all ${
+              filter === "pending" ? "ring-2 ring-warning" : ""
+            }`}
+          >
             <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
               Pending dues
             </p>
             <p className="text-2xl text-warning mt-1" style={{ fontFamily: "var(--font-display)" }}>
               ₹{totalDue.toLocaleString("en-IN")}
             </p>
-          </div>
+            <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+              {pendingDueOrders.length} order{pendingDueOrders.length === 1 ? "" : "s"} awaiting payment &middot; tap to view
+            </p>
+          </Card>
         )}
         <div className="bg-content1 rounded-lg p-5 shadow-lg">
           <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
@@ -189,16 +265,23 @@ export default function HomePage() {
       </section>
 
       <section className="bg-content1 rounded-lg p-6 shadow-lg">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-xl font-semibold text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-            Total orders
+            {totalOrdersTitle}
           </h2>
-          <Link href="/orders" className="text-xs text-secondary hover:underline" style={{ fontFamily: "var(--font-mono)" }}>
-            View all &rarr;
-          </Link>
+          <div className="flex items-center gap-3">
+            {filter && (
+              <Button size="sm" variant="light" radius="sm" onPress={() => setFilter(null)}>
+                Clear filter ✕
+              </Button>
+            )}
+            <Link href="/orders" className="text-xs text-secondary hover:underline" style={{ fontFamily: "var(--font-mono)" }}>
+              View all &rarr;
+            </Link>
+          </div>
         </div>
         <div className="space-y-2">
-          {orders.slice(0, 5).map((o) => (
+          {displayedOrders.map((o) => (
             <Link
               key={o.id}
               href={`/orders/detail?id=${encodeURIComponent(o.id)}`}
@@ -208,11 +291,26 @@ export default function HomePage() {
                 <span className="text-foreground/40 mr-1">{o.id}</span>
                 {o.customer?.name}
               </span>
-              <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-                {o.serviceType} &middot; {o.status}
-              </span>
+              {filter === "collected" ? (
+                <span className="text-xs text-success" style={{ fontFamily: "var(--font-mono)" }}>
+                  ₹{orderTotal(o).toLocaleString("en-IN")} collected
+                </span>
+              ) : filter === "pending" ? (
+                <span className="text-xs text-warning" style={{ fontFamily: "var(--font-mono)" }}>
+                  ₹{orderDue(o).toLocaleString("en-IN")} due
+                </span>
+              ) : (
+                <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+                  {o.serviceType} &middot; {o.status}
+                </span>
+              )}
             </Link>
           ))}
+          {displayedOrders.length === 0 && (
+            <p className="text-sm text-foreground/60 py-4 text-center">
+              {filter === "collected" ? "No fully-paid orders yet." : filter === "pending" ? "No pending dues right now." : "No orders yet."}
+            </p>
+          )}
         </div>
       </section>
     </div>

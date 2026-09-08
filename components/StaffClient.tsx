@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Card,
   CardBody,
@@ -12,38 +13,11 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
-  Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
   useDisclosure,
-  DateRangePicker,
 } from "@heroui/react";
-import type { DateValue } from "@react-types/datepicker";
-import type { RangeValue } from "@react-types/shared";
-import { getLocalTimeZone, today } from "@internationalized/date";
 import type { StaffMember } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-
-/** Parses an order/assignment date string (YYYY-MM-DD) into a comparable Date, tolerating blanks. */
-function toDate(d?: string): Date | null {
-  if (!d) return null;
-  const parsed = new Date(d + "T00:00:00");
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function withinRange(dateStr: string | undefined, range: RangeValue<DateValue> | null): boolean {
-  if (!range) return true;
-  const d = toDate(dateStr);
-  if (!d) return false;
-  const start = range.start.toDate(getLocalTimeZone());
-  const end = range.end.toDate(getLocalTimeZone());
-  end.setHours(23, 59, 59, 999);
-  return d >= start && d <= end;
-}
 
 interface StaffFormState {
   name: string;
@@ -67,8 +41,9 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState("");
 
+  // Clicking a staff member's name opens this small profile modal. It's just
+  // a quick summary — "View assignments" is the full page (see app/staff/assignments).
   const [selected, setSelected] = useState<StaffMember | null>(null);
-  const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   const [editForm, setEditForm] = useState<StaffFormState>(emptyStaffForm);
@@ -78,7 +53,6 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
 
   function openStaff(member: StaffMember): void {
     setSelected(member);
-    setRange(null);
     onOpen();
   }
 
@@ -179,7 +153,13 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
                   {totalEvents} event{totalEvents === 1 ? "" : "s"} assigned &middot; {s.phone || "no phone on file"}
                 </p>
                 <div className="flex gap-2 mt-3">
-                  <Button size="sm" variant="flat" radius="sm" onPress={() => openStaff(s)}>
+                  <Button
+                    as={Link}
+                    href={`/staff/assignments?id=${encodeURIComponent(s.id)}`}
+                    size="sm"
+                    variant="flat"
+                    radius="sm"
+                  >
                     View assignments
                   </Button>
                   {canManage && (
@@ -195,72 +175,58 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
       </div>
       {visibleStaff.length === 0 && <p className="text-[#F8F4E6]/60 text-center py-10">No staff yet.</p>}
 
-      {/* Assignments / income modal */}
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="2xl" scrollBehavior="inside">
+      {/* Staff profile modal — opened by clicking a name. Quick summary only;
+          the full assignments table lives on its own page (see the "View
+          assignments" button above). */}
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="md">
         <ModalContent>
           {(onClose) => {
             if (!selected) return null;
-            const filtered = (selected.assignments || []).filter((a) => withinRange(a.date, range));
-            const total = filtered.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+            const totalAmount = (selected.assignments || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+            const totalEvents = (selected.assignments || []).length;
+            const canManage = isOwner || selected.id === user?.staffId;
             return (
               <>
-                <ModalHeader style={{ fontFamily: "var(--font-display)" }}>{selected.name} — assignments</ModalHeader>
-                <ModalBody>
-                  <DateRangePicker
-                    label="Filter by date range"
-                    variant="bordered"
-                    value={range}
-                    onChange={setRange}
-                    maxValue={today(getLocalTimeZone())}
-                  />
-                  {range && (
-                    <Button size="sm" variant="light" className="self-start -mt-2" onPress={() => setRange(null)}>
-                      Clear filter
-                    </Button>
-                  )}
-
-                  {filtered.length ? (
-                    <div className="overflow-x-auto">
-                      <Table aria-label={`${selected.name} assignments`} removeWrapper className="min-w-[520px]">
-                        <TableHeader>
-                          <TableColumn>ORDER</TableColumn>
-                          <TableColumn>CUSTOMER NAME</TableColumn>
-                          <TableColumn>AMOUNT</TableColumn>
-                          <TableColumn>DATE</TableColumn>
-                        </TableHeader>
-                        <TableBody>
-                          {filtered.map((a, i) => (
-                            <TableRow key={i}>
-                              <TableCell>
-                                <span className="text-foreground/40 mr-1">{a.orderId}</span>
-                                {a.program}
-                              </TableCell>
-                              <TableCell>{a.customerName}</TableCell>
-                              <TableCell>₹{a.amount || 0}</TableCell>
-                              <TableCell>{a.date || "—"}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-foreground/60 py-6 text-center">
-                      {selected.assignments?.length ? "No assignments in this date range." : "No assignments yet."}
+                <ModalHeader style={{ fontFamily: "var(--font-display)" }}>{selected.name}</ModalHeader>
+                <ModalBody className="space-y-2 pb-2">
+                  <p className="text-sm text-foreground/70">
+                    <span className="text-foreground/50">Phone: </span>
+                    {selected.phone || "no phone on file"}
+                  </p>
+                  <p className="text-sm text-foreground/70">
+                    <span className="text-foreground/50">Events assigned: </span>
+                    {totalEvents}
+                  </p>
+                  {isOwner && (
+                    <p className="text-sm text-foreground/70">
+                      <span className="text-foreground/50">Total earnings: </span>
+                      <span className="text-warning font-semibold">₹{totalAmount.toLocaleString("en-IN")}</span>
                     </p>
                   )}
-                  {filtered.length > 0 && (
-                    <div className="flex justify-between bg-primary/10 border border-primary/40 rounded-md px-4 py-3 mt-2">
-                      <span className="font-semibold" style={{ fontFamily: "var(--font-mono)" }}>
-                        {range ? "Total (in range)" : "Total"}
-                      </span>
-                      <span className="text-warning font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-                        ₹{total.toLocaleString("en-IN")}
-                      </span>
-                    </div>
-                  )}
                 </ModalBody>
-                <ModalFooter>
-                  <Button variant="bordered" onPress={onClose} radius="sm">
+                <ModalFooter className="flex-wrap">
+                  {canManage && (
+                    <Button
+                      variant="bordered"
+                      radius="sm"
+                      onPress={() => {
+                        onClose();
+                        openEditModal(selected);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  )}
+                  <Button
+                    as={Link}
+                    href={`/staff/assignments?id=${encodeURIComponent(selected.id)}`}
+                    color="primary"
+                    radius="sm"
+                    className="font-semibold"
+                  >
+                    View assignments
+                  </Button>
+                  <Button variant="light" onPress={onClose} radius="sm">
                     Close
                   </Button>
                 </ModalFooter>

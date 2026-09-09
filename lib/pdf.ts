@@ -253,3 +253,131 @@ export async function getStaffReportPdfFile(order: Order): Promise<File> {
   const blob = doc.output("blob");
   return new File([blob], `${order.id}-staff-report.pdf`, { type: "application/pdf" });
 }
+
+/**
+ * Combined multi-order PDF: one summary page listing every selected order
+ * (with its own customer name, amount, and staff — owner view only for
+ * money) plus the grand total and combined staff totals, followed by one
+ * detail page per order (items, amount, staff). Orders no longer need to
+ * share a customer — the summary just prints each order's customer name
+ * next to it, and the header/filename fall back to "N orders" when the
+ * selection spans more than one customer.
+ */
+export async function generateCombinedOrdersPdf(orders: Order[], isOwner: boolean): Promise<void> {
+  if (orders.length === 0) return;
+  const doc = new jsPDF();
+  const uniqueNames = Array.from(new Set(orders.map((o) => o.customer.name || "Customer")));
+  const headerLabel = uniqueNames.length === 1 ? uniqueNames[0] : `${orders.length} orders`;
+
+  // ---- Page 1: summary ----
+  let y = await addHeader(doc, "Combined Report", headerLabel);
+  y = sectionTitle(doc, uniqueNames.length === 1 ? `Orders for ${uniqueNames[0]}` : "Selected orders", y, COLORS.royal);
+
+  let grandTotal = 0;
+  const staffTotals = new Map<string, number>();
+
+  orders.forEach((order) => {
+    y = ensureSpace(doc, y, 14);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...COLORS.aubergine);
+    doc.text(`${order.id} — ${order.customer.name || "Customer"}`, MARGIN, y);
+    y += 5.5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    const total = parseFloat(order.invoice?.totalAmount || "0") || 0;
+    if (isOwner) grandTotal += total;
+    const line = [
+      order.program.type || order.serviceType,
+      `Date: ${order.eventDate || "-"}`,
+      isOwner ? `Amount: Rs. ${total.toLocaleString("en-IN")}` : "",
+      order.staffAssigned.length ? `Staff: ${order.staffAssigned.map((s) => s.name).join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("   |   ");
+    doc.text(line, MARGIN + 2, y);
+    y += 7;
+
+    order.staffAssigned.forEach((s) => {
+      if (!isOwner) return;
+      const amt = parseFloat(s.amount || "0") || 0;
+      staffTotals.set(s.name, (staffTotals.get(s.name) || 0) + amt);
+    });
+  });
+
+  y += 2;
+  y = ensureSpace(doc, y, 20);
+  doc.setDrawColor(...COLORS.gold);
+  doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
+  y += 8;
+
+  if (isOwner) {
+    doc.setFillColor(...COLORS.gold);
+    doc.setDrawColor(...COLORS.gold);
+    doc.roundedRect(MARGIN, y - 5, 90, 10, 1.5, 1.5, "S");
+    doc.setTextColor(...COLORS.ochre);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(`Grand total: Rs. ${grandTotal.toLocaleString("en-IN")}`, MARGIN + 3, y + 1.5);
+    doc.setFont("helvetica", "normal");
+    y += 14;
+  }
+
+  if (isOwner && staffTotals.size > 0) {
+    y = sectionTitle(doc, "Staff — total across these orders", y, COLORS.royal);
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COLORS.aubergine);
+    Array.from(staffTotals.entries()).forEach(([name, amt]) => {
+      y = ensureSpace(doc, y);
+      doc.text(`\u2022 ${name}: Rs. ${amt.toLocaleString("en-IN")}`, MARGIN + 2, y);
+      y += 6;
+    });
+  }
+
+  // ---- One detail page per order ----
+  orders.forEach((order) => {
+    doc.addPage();
+    let py = 20;
+    doc.setTextColor(...COLORS.royal);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(`${order.id} — ${order.customer.name}`, MARGIN, py);
+    py += 8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COLORS.aubergine);
+    py = writeLine(doc, "Program", order.program.type || order.serviceType, MARGIN, py);
+    py = writeLine(doc, "Event date", order.eventDate || "-", MARGIN, py);
+    py += 2;
+
+    py = sectionTitle(doc, "Items", py, COLORS.leaf);
+    py = writeItemList(doc, collectItemLines(order), py);
+    py += 3;
+
+    if (isOwner) {
+      const total = parseFloat(order.invoice?.totalAmount || "0") || 0;
+      const advance = parseFloat(order.invoice?.advancePaid || "0") || 0;
+      const due = Math.max(total - advance, 0);
+      py = sectionTitle(doc, "Payment", py, COLORS.royal);
+      py = writeLine(doc, "Total amount", `Rs. ${total.toLocaleString("en-IN")}`, MARGIN, py);
+      py = writeLine(doc, "Advance paid", `Rs. ${advance.toLocaleString("en-IN")}`, MARGIN, py);
+      py = writeLine(doc, "Due amount", `Rs. ${due.toLocaleString("en-IN")}`, MARGIN, py);
+      py += 2;
+    }
+
+    if (order.staffAssigned.length > 0) {
+      py = ensureSpace(doc, py, 20);
+      py = sectionTitle(doc, "Staff", py, COLORS.leaf);
+      doc.setFontSize(9.5);
+      doc.setTextColor(...COLORS.aubergine);
+      order.staffAssigned.forEach((s) => {
+        py = ensureSpace(doc, py);
+        doc.text(`\u2022 ${s.name}${isOwner ? ` — Rs. ${s.amount || 0}` : ""}`, MARGIN + 2, py);
+        py += 6;
+      });
+    }
+  });
+
+  const filenameBase = uniqueNames.length === 1 ? uniqueNames[0].replace(/\s+/g, "-") : `orders-${orders.length}`;
+  doc.save(`${filenameBase}-combined-orders.pdf`);
+}

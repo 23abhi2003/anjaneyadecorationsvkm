@@ -206,11 +206,18 @@ function ChoiceChips({
   value,
   onChange,
   color = "secondary" as const,
+  allowClear = false,
 }: {
   options: string[];
   value: string;
   onChange: (value: string) => void;
   color?: "secondary" | "primary";
+  /**
+   * When true, tapping the already-selected chip a second time clears the
+   * selection back to "none" instead of doing nothing. Used for choices that
+   * are genuinely optional (e.g. Stove: single/double, or no stove at all).
+   */
+  allowClear?: boolean;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -221,7 +228,7 @@ function ChoiceChips({
           radius="full"
           variant={value === opt ? "solid" : "bordered"}
           color={value === opt ? color : "default"}
-          onPress={() => onChange(opt)}
+          onPress={() => onChange(value === opt && allowClear ? "" : opt)}
         >
           {opt}
         </Button>
@@ -740,7 +747,12 @@ export default function OrderWizard({
                 <p className="text-xs uppercase tracking-wide text-foreground/50 mb-2" style={{ fontFamily: "var(--font-mono)" }}>
                   Stoves
                 </p>
-                <ChoiceChips options={STOVE_TYPES} value={form.tenthouse.stoveType} onChange={(v) => setPath("tenthouse.stoveType", v)} />
+                <ChoiceChips
+                  options={STOVE_TYPES}
+                  value={form.tenthouse.stoveType}
+                  onChange={(v) => setPath("tenthouse.stoveType", v)}
+                  allowClear
+                />
               </div>
               <div className="grid sm:grid-cols-2 gap-3">
                 <QtyField label="Stands (poles)" value={form.tenthouse.stands} onChange={(v) => setPath("tenthouse.stands", v)} />
@@ -805,7 +817,13 @@ export default function OrderWizard({
 
           {step === "staff" && (
             <>
-              <StaffStep staffList={staffList} assigned={form.staffAssigned} onChange={(a) => setPath("staffAssigned", a)} showAmount={isOwner} />
+              <StaffStep
+                staffList={staffList}
+                assigned={form.staffAssigned}
+                onChange={(a) => setPath("staffAssigned", a)}
+                showAmount={isOwner}
+                readOnly={isEdit && !isOwner}
+              />
               {/* Staff accounts skip the (owner-only) invoice step, so notes live here instead. */}
               {!isOwner && (
                 <Textarea
@@ -909,12 +927,19 @@ function StaffStep({
   assigned,
   onChange,
   showAmount = true,
+  readOnly = false,
 }: {
   staffList: StaffMember[];
   assigned: StaffAssignment[];
   onChange: (assigned: StaffAssignment[]) => void;
   /** Staff-role users can assign staff to an order but not see/set payout amounts. */
   showAmount?: boolean;
+  /**
+   * When true (staff editing an already-created order), the staff list is
+   * shown for reference only — no checkboxes, nothing to toggle. Only the
+   * owner can change who's assigned once an order exists.
+   */
+  readOnly?: boolean;
 }) {
   function toggle(staffId: string, name: string): void {
     const exists = assigned.find((a) => a.staffId === staffId);
@@ -924,6 +949,23 @@ function StaffStep({
   function setAmount(staffId: string, amount: string): void {
     onChange(assigned.map((a) => (a.staffId === staffId ? { ...a, amount } : a)));
   }
+
+  if (readOnly) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+          Staff assignments can only be changed by the owner.
+        </p>
+        {assigned.length === 0 && <p className="text-sm text-foreground/60">No staff assigned yet.</p>}
+        {assigned.map((a) => (
+          <div key={a.staffId} className="flex items-center gap-2 rounded-md px-3 py-2.5 bg-content2">
+            <span className="text-sm">{a.name}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       {staffList.map((s) => {

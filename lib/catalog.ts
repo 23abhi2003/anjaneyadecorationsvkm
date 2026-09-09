@@ -20,6 +20,7 @@ export const BOWL_TYPES: Record<string, string[]> = {
   Baghoni: ["10kg", "20kg", "25kg", "30kg", "40kg" ,"50kg","70kg"],
   Anda: ["50kg", "70kg"],
   Lagan: ["30kg", "70kg"],
+  kanchudu:["10kg"],
 };
 
 export const FRAME_SIZES: string[] = ["8x4", "9x4", "10x4"];

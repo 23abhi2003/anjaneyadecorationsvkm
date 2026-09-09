@@ -93,7 +93,7 @@ function decoratePage(doc: jsPDF) {
   addPageFrame(doc);
 }
 
-async function addHeader(doc: jsPDF, title: string, orderId: string, teluguTitle = false): Promise<number> {
+async function addHeader(doc: jsPDF, title: string, orderId: string, telugu = false): Promise<number> {
   const logo = await getLogoDataUrl();
   decoratePage(doc);
 
@@ -112,11 +112,22 @@ async function addHeader(doc: jsPDF, title: string, orderId: string, teluguTitle
   doc.setTextColor(...COLORS.gold);
   doc.setFontSize(16);
   doc.text("Anjaneya Decorations", textX, 14);
-  doc.setFontSize(8.5);
-  doc.setTextColor(...COLORS.cream);
-  doc.text("Tent House & Decoration - V.K.M - 9704452180", textX, 20.5);
 
-  if (teluguTitle) {
+  if (telugu) {
+    // Business name + phone number stay as-is (proper nouns); only the
+    // descriptive tagline itself gets translated.
+    const taglineImg = teluguTextToImage(`${LABELS_TE.tagline} - V.K.M - 9704452180`, {
+      sizePt: 8.5,
+      color: COLORS.cream,
+    });
+    doc.addImage(taglineImg.dataUrl, "PNG", textX, 20.5 - taglineImg.ascentMm, taglineImg.widthMm, taglineImg.heightMm);
+  } else {
+    doc.setFontSize(8.5);
+    doc.setTextColor(...COLORS.cream);
+    doc.text("Tent House & Decoration - V.K.M - 9704452180", textX, 20.5);
+  }
+
+  if (telugu) {
     const img = teluguTextToImage(title, { sizePt: 12, bold: true, color: COLORS.gold });
     doc.addImage(img.dataUrl, "PNG", PAGE_WIDTH - MARGIN - img.widthMm, 12 - img.ascentMm, img.widthMm, img.heightMm);
   } else {

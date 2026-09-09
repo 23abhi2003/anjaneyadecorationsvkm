@@ -10,6 +10,7 @@ export const PROGRAM_TYPES: string[] = [
   "Lighting",
   "DJ Event",
   "Saree Function",
+  "Death ",
   "Others",
 ];
 

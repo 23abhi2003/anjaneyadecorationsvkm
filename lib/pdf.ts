@@ -3,6 +3,16 @@
 import { jsPDF } from "jspdf";
 import type { Order } from "./types";
 import { collectItemLines, mapsLinkForOrder } from "./orderDisplay";
+import { loadTeluguFonts, teluguTextToImage, wrapTeluguText, type TeluguTextStyle } from "./telugu/teluguText";
+import {
+  LABELS_TE,
+  translateItemLine,
+  translateProgramType,
+  translatePaymentType,
+  formatRupeesTe,
+} from "./telugu/dictionary";
+
+export type InvoiceLanguage = "en" | "te";
 
 const COLORS = {
   aubergine: [36, 17, 41] as [number, number, number],
@@ -83,7 +93,7 @@ function decoratePage(doc: jsPDF) {
   addPageFrame(doc);
 }
 
-async function addHeader(doc: jsPDF, title: string, orderId: string): Promise<number> {
+async function addHeader(doc: jsPDF, title: string, orderId: string, teluguTitle = false): Promise<number> {
   const logo = await getLogoDataUrl();
   decoratePage(doc);
 
@@ -106,9 +116,15 @@ async function addHeader(doc: jsPDF, title: string, orderId: string): Promise<nu
   doc.setTextColor(...COLORS.cream);
   doc.text("Tent House & Decoration - V.K.M - 9704452180", textX, 20.5);
 
+  if (teluguTitle) {
+    const img = teluguTextToImage(title, { sizePt: 12, bold: true, color: COLORS.gold });
+    doc.addImage(img.dataUrl, "PNG", PAGE_WIDTH - MARGIN - img.widthMm, 12 - img.ascentMm, img.widthMm, img.heightMm);
+  } else {
+    doc.setTextColor(...COLORS.gold);
+    doc.setFontSize(12);
+    doc.text(title, PAGE_WIDTH - MARGIN, 12, { align: "right" });
+  }
   doc.setTextColor(...COLORS.gold);
-  doc.setFontSize(12);
-  doc.text(title, PAGE_WIDTH - MARGIN, 12, { align: "right" });
   doc.setFontSize(10);
   doc.text(orderId, PAGE_WIDTH - MARGIN, 19, { align: "right" });
 
@@ -163,7 +179,7 @@ function writeItemList(doc: jsPDF, items: string[], y: number): number {
  * Drawn at a fixed position near the bottom, independent of the running `y`
  * cursor — BOTTOM_LIMIT already keeps normal content clear of this area.
  */
-function addThankYouFooter(doc: jsPDF, message = "Thank you for your business!") {
+function addThankYouFooter(doc: jsPDF, message = "Thank you for your business!", telugu = false) {
   const bandTop = 281;
   const bandHeight = PAGE_HEIGHT - 6 - bandTop; // stop just inside the page frame
 
@@ -174,15 +190,25 @@ function addThankYouFooter(doc: jsPDF, message = "Thank you for your business!")
   doc.setLineWidth(0.3);
   doc.line(MARGIN, bandTop + 3, PAGE_WIDTH - MARGIN, bandTop + 3);
 
-  doc.setTextColor(...COLORS.gold);
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(10.5);
-  doc.text(message, PAGE_WIDTH / 2, bandTop + bandHeight / 2 + 3.5, { align: "center" });
-  doc.setFont("helvetica", "normal");
+  const centerY = bandTop + bandHeight / 2 + 3.5;
+  if (telugu) {
+    const img = teluguTextToImage(message, { sizePt: 10.5, color: COLORS.gold });
+    doc.addImage(img.dataUrl, "PNG", (PAGE_WIDTH - img.widthMm) / 2, centerY - img.ascentMm, img.widthMm, img.heightMm);
+  } else {
+    doc.setTextColor(...COLORS.gold);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(10.5);
+    doc.text(message, PAGE_WIDTH / 2, centerY, { align: "center" });
+    doc.setFont("helvetica", "normal");
+  }
 }
 
 /** Customer-facing invoice: full item list plus every amount/payment detail. */
-export async function generateInvoicePdf(order: Order): Promise<void> {
+export async function generateInvoicePdf(order: Order, language: InvoiceLanguage = "en"): Promise<void> {
+  if (language === "te") {
+    await generateInvoicePdfTelugu(order);
+    return;
+  }
   const doc = new jsPDF();
   let y = await addHeader(doc, "Invoice", order.id);
 
@@ -251,6 +277,143 @@ export async function generateInvoicePdf(order: Order): Promise<void> {
   addThankYouFooter(doc, "Thank you for choosing Anjaneya Decorations!");
 
   doc.save(`${order.id}-invoice.pdf`);
+}
+
+/**
+ * Draws a Telugu label/value pair the same way `writeLine()` does for
+ * English, but rasterizes the (Telugu) label since jsPDF can't shape it.
+ * The value renders in the same font/position style as the English invoice
+ * when it's plain text (numbers, dates); pass `teluguValue: true` for values
+ * that are themselves translated Telugu (e.g. program type, payment type).
+ */
+function writeLineTe(doc: jsPDF, label: string, value: string, x: number, y: number, teluguValue = false): number {
+  const labelStyle: TeluguTextStyle = { sizePt: 10, bold: true, color: COLORS.aubergine };
+  const labelImg = teluguTextToImage(`${label}:`, labelStyle);
+  doc.addImage(labelImg.dataUrl, "PNG", x, y - labelImg.ascentMm, labelImg.widthMm, labelImg.heightMm);
+
+  // Telugu labels vary a lot more in width than their English equivalents, so the
+  // fixed 32mm column (sized for English) isn't always wide enough — fall back to
+  // "right after the label" plus a small gap whenever the label itself is wider.
+  const valueX = Math.max(x + 32, x + labelImg.widthMm + 3);
+  if (teluguValue) {
+    const valueImg = teluguTextToImage(value || LABELS_TE.notAvailable, { sizePt: 10, color: COLORS.aubergine });
+    doc.addImage(valueImg.dataUrl, "PNG", valueX, y - valueImg.ascentMm, valueImg.widthMm, valueImg.heightMm);
+  } else {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...COLORS.aubergine);
+    doc.text(value || LABELS_TE.notAvailable, valueX, y);
+  }
+  return y + 6.5;
+}
+
+function sectionTitleTe(doc: jsPDF, text: string, y: number, color: [number, number, number]): number {
+  const img = teluguTextToImage(text, { sizePt: 11.5, bold: true, color });
+  doc.addImage(img.dataUrl, "PNG", MARGIN, y - img.ascentMm, img.widthMm, img.heightMm);
+  return y + 7;
+}
+
+function writeItemListTe(doc: jsPDF, items: string[], y: number): number {
+  const style: TeluguTextStyle = { sizePt: 9.5, color: COLORS.aubergine };
+  if (items.length === 0) {
+    y = ensureSpace(doc, y);
+    const img = teluguTextToImage(LABELS_TE.noItems, style);
+    doc.addImage(img.dataUrl, "PNG", MARGIN + 2, y - img.ascentMm, img.widthMm, img.heightMm);
+    return y + 6;
+  }
+  const maxWidth = PAGE_WIDTH - MARGIN * 2 - 6;
+  items.forEach((rawLine) => {
+    const line = `\u2022 ${translateItemLine(rawLine)}`;
+    const wrapped = wrapTeluguText(line, maxWidth, style);
+    wrapped.forEach((wrappedLine) => {
+      y = ensureSpace(doc, y);
+      const img = teluguTextToImage(wrappedLine, style);
+      doc.addImage(img.dataUrl, "PNG", MARGIN + 2, y - img.ascentMm, img.widthMm, img.heightMm);
+      y += 6;
+    });
+  });
+  return y;
+}
+
+/**
+ * Telugu translation of the customer invoice. Mirrors `generateInvoicePdf`'s
+ * layout, but every fixed label and every recognized catalog term is drawn
+ * as a rasterized Telugu image (see lib/telugu/teluguText.ts for why: jsPDF
+ * can't shape Indic script text on its own). Free text the customer/staff
+ * typed themselves (name, address, notes, a custom "Others" value) is left
+ * exactly as entered — there's no reliable way to auto-translate that.
+ */
+async function generateInvoicePdfTelugu(order: Order): Promise<void> {
+  await loadTeluguFonts();
+  const doc = new jsPDF();
+  let y = await addHeader(doc, LABELS_TE.invoiceTitle, order.id, true);
+
+  y = sectionTitleTe(doc, LABELS_TE.customer, y, COLORS.royal);
+  y = writeLineTe(doc, LABELS_TE.name, order.customer.name, MARGIN, y);
+  y = writeLineTe(doc, LABELS_TE.phone, order.customer.phone, MARGIN, y);
+  if (order.customer.address) y = writeLineTe(doc, LABELS_TE.address, order.customer.address, MARGIN, y);
+  y = writeLineTe(doc, LABELS_TE.program, translateProgramType(order.program.type || order.serviceType), MARGIN, y, true);
+  y = writeLineTe(doc, LABELS_TE.eventDate, order.eventDate || LABELS_TE.notAvailable, MARGIN, y);
+  y += 3;
+
+  y = sectionTitleTe(doc, LABELS_TE.items, y, COLORS.royal);
+  y = writeItemListTe(doc, collectItemLines(order), y);
+  y += 3;
+
+  y = ensureSpace(doc, y, 40);
+  doc.setDrawColor(...COLORS.gold);
+  doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
+  y += 8;
+
+  const total = parseFloat(order.invoice.totalAmount || "0") || 0;
+  const advance = parseFloat(order.invoice.advancePaid || "0") || 0;
+  const due = Math.max(total - advance, 0);
+
+  y = sectionTitleTe(doc, LABELS_TE.payment, y, COLORS.royal);
+  y = writeLineTe(doc, LABELS_TE.totalAmount, formatRupeesTe(total), MARGIN, y, true);
+  y = writeLineTe(doc, LABELS_TE.advancePaid, formatRupeesTe(advance), MARGIN, y, true);
+
+  doc.setFillColor(...COLORS.gold);
+  doc.setDrawColor(...COLORS.gold);
+  y += 1;
+  doc.roundedRect(MARGIN, y - 5, 90, 10, 1.5, 1.5, "S");
+  const dueImg = teluguTextToImage(`${LABELS_TE.dueAmount}: ${formatRupeesTe(due)}`, {
+    sizePt: 11,
+    bold: true,
+    color: COLORS.ochre,
+  });
+  doc.addImage(dueImg.dataUrl, "PNG", MARGIN + 3, y + 1.5 - dueImg.ascentMm, dueImg.widthMm, dueImg.heightMm);
+  y += 12;
+
+  y = writeLineTe(doc, LABELS_TE.paymentType, translatePaymentType(order.invoice.paymentType), MARGIN, y, true);
+
+  if (order.notes?.trim()) {
+    y += 3;
+    y = ensureSpace(doc, y, 20);
+    y = sectionTitleTe(doc, LABELS_TE.notes, y, COLORS.royal);
+    const noteStyle: TeluguTextStyle = { sizePt: 9.5, color: COLORS.aubergine };
+    const noteLines = wrapTeluguText(order.notes.trim(), PAGE_WIDTH - MARGIN * 2 - 2, noteStyle);
+    noteLines.forEach((line) => {
+      y = ensureSpace(doc, y);
+      const img = teluguTextToImage(line, noteStyle);
+      doc.addImage(img.dataUrl, "PNG", MARGIN + 2, y - img.ascentMm, img.widthMm, img.heightMm);
+      y += 5.5;
+    });
+    y += 1;
+  }
+
+  const link = mapsLinkForOrder(order);
+  if (link) {
+    y += 4;
+    y = ensureSpace(doc, y, 10);
+    const linkImg = teluguTextToImage(LABELS_TE.mapsLink, { sizePt: 10, color: COLORS.royal });
+    doc.addImage(linkImg.dataUrl, "PNG", MARGIN, y - linkImg.ascentMm, linkImg.widthMm, linkImg.heightMm);
+    doc.link(MARGIN, y - linkImg.ascentMm, linkImg.widthMm, linkImg.heightMm, { url: link });
+  }
+
+  addThankYouFooter(doc, LABELS_TE.thankYou, true);
+
+  doc.save(`${order.id}-invoice-telugu.pdf`);
 }
 
 /** Builds the staff report doc without saving/downloading it — shared by the download and share-sheet entry points below. */

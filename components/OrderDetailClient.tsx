@@ -3,11 +3,25 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, CardBody, Divider, Input, Button, Chip, Select, SelectItem, Textarea } from "@heroui/react";
+import {
+  Card,
+  CardBody,
+  Divider,
+  Input,
+  Button,
+  Chip,
+  Select,
+  SelectItem,
+  Textarea,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@heroui/react";
 import Image from "next/image";
 import type { Order, OrderStatus, CompletionStatus, StaffMember } from "@/lib/types";
 import { collectItemLines, mapsLinkForOrder, waLink, buildStaffWhatsAppMessage } from "@/lib/orderDisplay";
-import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile } from "@/lib/pdf";
+import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile, type InvoiceLanguage } from "@/lib/pdf";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 
@@ -84,10 +98,13 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     }
   }
 
-  async function onDownloadInvoice(): Promise<void> {
+  async function onDownloadInvoice(language: InvoiceLanguage): Promise<void> {
     setPdfBusy("invoice");
     try {
-      await generateInvoicePdf({ ...order, status: overallStatus, invoice: { ...invoice, dueAmount: String(due) }, notes });
+      await generateInvoicePdf(
+        { ...order, status: overallStatus, invoice: { ...invoice, dueAmount: String(due) }, notes },
+        language,
+      );
     } finally {
       setPdfBusy(null);
     }
@@ -258,9 +275,20 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
           Edit order
         </Button>
         {isOwner && (
-          <Button color="primary" radius="sm" onPress={onDownloadInvoice} isLoading={pdfBusy === "invoice"} className="font-semibold">
-            Download Invoice (customer)
-          </Button>
+          <Dropdown>
+            <DropdownTrigger>
+              <Button color="primary" radius="sm" isLoading={pdfBusy === "invoice"} className="font-semibold">
+                Download Invoice (customer)
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu
+              aria-label="Choose invoice language"
+              onAction={(key) => onDownloadInvoice(key as InvoiceLanguage)}
+            >
+              <DropdownItem key="en">English</DropdownItem>
+              <DropdownItem key="te">తెలుగు (Telugu)</DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
         )}
         <Button color="primary" radius="sm" variant="flat" onPress={onDownloadStaffReport} isLoading={pdfBusy === "report"} className="font-semibold">
           Download Staff Report

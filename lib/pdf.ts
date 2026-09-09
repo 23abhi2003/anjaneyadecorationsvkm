@@ -14,8 +14,13 @@ const COLORS = {
 };
 
 const PAGE_WIDTH = 210;
+const PAGE_HEIGHT = 297;
 const MARGIN = 14;
 const BOTTOM_LIMIT = 275;
+
+// Cache the logo so we only fetch/decode it once per session, even though it's
+// drawn on every page (header icon + background watermark).
+let cachedLogoDataUrl: string | null | undefined = undefined;
 
 async function loadLogoDataUrl(): Promise<string | null> {
   try {
@@ -32,11 +37,59 @@ async function loadLogoDataUrl(): Promise<string | null> {
   }
 }
 
+async function getLogoDataUrl(): Promise<string | null> {
+  if (cachedLogoDataUrl === undefined) {
+    cachedLogoDataUrl = await loadLogoDataUrl();
+  }
+  return cachedLogoDataUrl;
+}
+
+/** Runs `fn` with a temporary fill/draw opacity, then restores full opacity. */
+function withOpacity(doc: jsPDF, opacity: number, fn: () => void) {
+  const gStateApi = doc as unknown as { setGState: (g: unknown) => void; GState: new (params: { opacity: number }) => unknown };
+  try {
+    gStateApi.setGState(new gStateApi.GState({ opacity }));
+    fn();
+  } finally {
+    gStateApi.setGState(new gStateApi.GState({ opacity: 1 }));
+  }
+}
+
+/** Faint, centered logo watermark behind all page content. */
+function addWatermark(doc: jsPDF, logo: string | null) {
+  if (!logo) return;
+  try {
+    const size = 140;
+    const x = (PAGE_WIDTH - size) / 2;
+    const y = (PAGE_HEIGHT - size) / 2 - 5;
+    withOpacity(doc, 0.05, () => {
+      doc.addImage(logo, "PNG", x, y, size, size);
+    });
+  } catch {
+    // ignore malformed image, page still reads fine without the watermark
+  }
+}
+
+/** Thin decorative gold frame around the page content area. */
+function addPageFrame(doc: jsPDF) {
+  doc.setDrawColor(...COLORS.gold);
+  doc.setLineWidth(0.4);
+  doc.rect(6, 6, PAGE_WIDTH - 12, PAGE_HEIGHT - 12);
+}
+
+/** Watermark + frame together — call this on every page, including ones added mid-document. */
+function decoratePage(doc: jsPDF) {
+  addWatermark(doc, cachedLogoDataUrl ?? null);
+  addPageFrame(doc);
+}
+
 async function addHeader(doc: jsPDF, title: string, orderId: string): Promise<number> {
+  const logo = await getLogoDataUrl();
+  decoratePage(doc);
+
   doc.setFillColor(...COLORS.aubergine);
   doc.rect(0, 0, PAGE_WIDTH, 30, "F");
 
-  const logo = await loadLogoDataUrl();
   if (logo) {
     try {
       doc.addImage(logo, "PNG", MARGIN, 5, 13, 19.5);
@@ -65,6 +118,7 @@ async function addHeader(doc: jsPDF, title: string, orderId: string): Promise<nu
 function ensureSpace(doc: jsPDF, y: number, needed = 8): number {
   if (y + needed > BOTTOM_LIMIT) {
     doc.addPage();
+    decoratePage(doc);
     return 20;
   }
   return y;
@@ -102,6 +156,29 @@ function writeItemList(doc: jsPDF, items: string[], y: number): number {
     y += 6;
   });
   return y;
+}
+
+/**
+ * Decorative footer band on the current (last) page, styled like the header.
+ * Drawn at a fixed position near the bottom, independent of the running `y`
+ * cursor — BOTTOM_LIMIT already keeps normal content clear of this area.
+ */
+function addThankYouFooter(doc: jsPDF, message = "Thank you for your business!") {
+  const bandTop = 281;
+  const bandHeight = PAGE_HEIGHT - 6 - bandTop; // stop just inside the page frame
+
+  doc.setFillColor(...COLORS.aubergine);
+  doc.rect(6, bandTop, PAGE_WIDTH - 12, bandHeight, "F");
+
+  doc.setDrawColor(...COLORS.gold);
+  doc.setLineWidth(0.3);
+  doc.line(MARGIN, bandTop + 3, PAGE_WIDTH - MARGIN, bandTop + 3);
+
+  doc.setTextColor(...COLORS.gold);
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(10.5);
+  doc.text(message, PAGE_WIDTH / 2, bandTop + bandHeight / 2 + 3.5, { align: "center" });
+  doc.setFont("helvetica", "normal");
 }
 
 /** Customer-facing invoice: full item list plus every amount/payment detail. */
@@ -170,6 +247,8 @@ export async function generateInvoicePdf(order: Order): Promise<void> {
     doc.setFontSize(10);
     doc.textWithLink("View customer location on Google Maps", MARGIN, y, { url: link });
   }
+
+  addThankYouFooter(doc, "Thank you for choosing Anjaneya Decorations!");
 
   doc.save(`${order.id}-invoice.pdf`);
 }
@@ -287,16 +366,26 @@ export async function generateCombinedOrdersPdf(orders: Order[], isOwner: boolea
     doc.setFontSize(9.5);
     const total = parseFloat(order.invoice?.totalAmount || "0") || 0;
     if (isOwner) grandTotal += total;
+    const staffLabel = order.staffAssigned.length
+      ? order.staffAssigned
+          .map((s) => (isOwner ? `${s.name} (Rs. ${(parseFloat(s.amount || "0") || 0).toLocaleString("en-IN")})` : s.name))
+          .join(", ")
+      : "";
     const line = [
       order.program.type || order.serviceType,
       `Date: ${order.eventDate || "-"}`,
       isOwner ? `Amount: Rs. ${total.toLocaleString("en-IN")}` : "",
-      order.staffAssigned.length ? `Staff: ${order.staffAssigned.map((s) => s.name).join(", ")}` : "",
+      staffLabel ? `Staff: ${staffLabel}` : "",
     ]
       .filter(Boolean)
       .join("   |   ");
-    doc.text(line, MARGIN + 2, y);
-    y += 7;
+    const wrappedLine = doc.splitTextToSize(line, PAGE_WIDTH - MARGIN * 2 - 4);
+    wrappedLine.forEach((wl: string) => {
+      y = ensureSpace(doc, y);
+      doc.text(wl, MARGIN + 2, y);
+      y += 5.5;
+    });
+    y += 1.5;
 
     order.staffAssigned.forEach((s) => {
       if (!isOwner) return;
@@ -337,6 +426,7 @@ export async function generateCombinedOrdersPdf(orders: Order[], isOwner: boolea
   // ---- One detail page per order ----
   orders.forEach((order) => {
     doc.addPage();
+    decoratePage(doc);
     let py = 20;
     doc.setTextColor(...COLORS.royal);
     doc.setFont("helvetica", "bold");
@@ -377,6 +467,8 @@ export async function generateCombinedOrdersPdf(orders: Order[], isOwner: boolea
       });
     }
   });
+
+  addThankYouFooter(doc, "Thank you for choosing Anjaneya Decorations!");
 
   const filenameBase = uniqueNames.length === 1 ? uniqueNames[0].replace(/\s+/g, "-") : `orders-${orders.length}`;
   doc.save(`${filenameBase}-combined-orders.pdf`);

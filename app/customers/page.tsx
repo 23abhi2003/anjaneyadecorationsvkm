@@ -4,36 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import CustomersClient from "@/components/CustomersClient";
-import type { Order, Customer, CustomerInfo } from "@/lib/types";
+import { withOrderCounts, type CustomerWithCount } from "@/lib/customers";
+import type { Order, Customer } from "@/lib/types";
 
-export interface CustomerWithCount extends Customer {
-  orderCount: number;
-}
-
-/**
- * Matches an order to a customer the same way the backend does
- * (`listOrdersForCustomer` in the API's db.ts): phone when we have one,
- * otherwise an exact, case-insensitive name match.
- *
- * Keeping this identical to the server matters for the delete flow — the
- * count shown next to the "Delete" button has to be the same count the API
- * uses when it decides whether to allow the delete.
- */
-export function orderBelongsToCustomer(order: Order, customer: Pick<Customer, "name" | "phone">): boolean {
-  const oc: Partial<CustomerInfo> = order.customer ?? {};
-  const phone = (customer.phone || "").trim();
-  const name = (customer.name || "").trim().toLowerCase();
-  if (phone && oc.phone && oc.phone.trim() === phone) return true;
-  if (!phone && oc.name && oc.name.trim().toLowerCase() === name) return true;
-  return false;
-}
-
-export function withOrderCounts(customers: Customer[], orders: Order[]): CustomerWithCount[] {
-  return customers.map((c) => ({
-    ...c,
-    orderCount: orders.filter((o) => orderBelongsToCustomer(o, c)).length,
-  }));
-}
+// NOTE: this file must export nothing but the default component. App Router
+// page files fail `next build`'s type check if they export helper functions.
+// The customer/order matching helpers live in `lib/customers.ts`.
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerWithCount[]>([]);

@@ -19,7 +19,7 @@ import {
   ModalFooter,
   useDisclosure,
 } from "@heroui/react";
-import { withOrderCounts, type CustomerWithCount } from "@/lib/customers";
+import { withOrderCounts, type CustomerWithCount } from "@/lib/customer";
 import type { Customer, Order } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";

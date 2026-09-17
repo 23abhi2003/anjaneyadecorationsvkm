@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import CustomersClient from "@/components/CustomersClient";
-import { withOrderCounts, type CustomerWithCount } from "@/lib/customers";
+import { withOrderCounts, type CustomerWithCount } from "@/lib/customer";
 import type { Order, Customer } from "@/lib/types";
 
 // NOTE: this file must export nothing but the default component. App Router

@@ -21,7 +21,7 @@ export default function QtyGrid({ options, values, onChange, unitLabel = "" }: Q
           label={unitLabel ? `${opt} ${unitLabel}` : opt}
           variant="bordered"
           size="sm"
-          value={values[opt] || ""}
+          value={values?.[opt] ?? ""}
           onValueChange={(v) => onChange(opt, v)}
         />
       ))}

@@ -27,6 +27,7 @@ export interface ProgramInfo {
   images: string[];
 }
 
+
 /** Maps an option label (e.g. "4x8", "50kg") to a free-text quantity. */
 export type QtyMap = Record<string, string>;
 
@@ -34,8 +35,8 @@ export interface BowlsInfo {
   Baghoni: QtyMap;
   Anda: QtyMap;
   Lagan: QtyMap;
+  kanchudu: QtyMap;
 }
-
 export interface TenthouseInfo {
   tents: QtyMap;
   bowls: BowlsInfo;

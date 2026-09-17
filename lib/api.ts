@@ -3,8 +3,8 @@
  * project). Set NEXT_PUBLIC_API_URL at build time — e.g. in Cloudflare
  * Pages' "Environment variables" settings, or in `.env.local` for local dev.
  */
-export const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "https://anjaneyadecorations-api.vangaabhi766.workers.dev").replace(/\/$/, "");
-// export const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8787").replace(/\/$/, "");
+// export const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "https://anjaneyadecorations-api.vangaabhi766.workers.dev").replace(/\/$/, "");
+export const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8787").replace(/\/$/, "");
 
 /** localStorage key the signed-in user is persisted under. No token anymore — just who you are. */
 export const AUTH_STORAGE_KEY = "anjaneya_auth";

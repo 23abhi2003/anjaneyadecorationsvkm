@@ -74,7 +74,7 @@ const emptyForm: WizardForm = {
   eventDate: "",
   tenthouse: {
     tents: {},
-    bowls: { Baghoni: {}, Anda: {}, Lagan: {} },
+    bowls: { Baghoni: {}, Anda: {}, Lagan: {}, kanchudu: {} },
     tablesBig: "",
     tablesSmall: "",
     chairs: "",

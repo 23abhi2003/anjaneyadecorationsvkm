@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/Auth";
 import InvoicesTab from "@/components/InvoicesTab";
 import AnalyticsTab from "@/components/AnalyticsTab";
 import { generateCombinedOrdersPdf } from "@/lib/pdf";
+import { inr } from "@/lib/staffPay";
+import { invoiceMoney } from "@/lib/invoicePay";
 import type { Order, OrderStatus, StaffMember } from "@/lib/types";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
@@ -18,11 +20,14 @@ const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
 
 function OrdersList({
   orders,
+  isOwner,
   selectable,
   selected,
   onToggle,
 }: {
   orders: Order[];
+  /** Amounts are owner-only (the API blanks the invoice for staff logins). */
+  isOwner?: boolean;
   /** Shows a checkbox on each card for building a combined multi-order PDF. */
   selectable?: boolean;
   selected?: Set<string>;
@@ -33,7 +38,9 @@ function OrdersList({
   }
   return (
     <div className="grid sm:grid-cols-2 gap-4">
-      {orders.map((o) => (
+      {orders.map((o) => {
+        const pay = invoiceMoney(o.invoice);
+        return (
         <Card key={o.id} className="bg-content1 relative">
           {selectable && (
             <div className="absolute top-3 right-3 z-10 no-print" onClick={(e) => e.stopPropagation()}>
@@ -60,6 +67,28 @@ function OrdersList({
                     {o.customer?.name}
                   </h3>
                   <p className="text-sm text-foreground/60">{o.program?.type || o.serviceType}</p>
+                  {/* Same chips as the Staff cards: total in a chip, then what's paid and what's still due. */}
+                  {isOwner && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                      {pay.total > 0 ? (
+                        <>
+                          <Chip color="warning" variant="flat" className="font-semibold">
+                            {inr(pay.total)}
+                          </Chip>
+                          <Chip size="sm" color="success" variant="flat">
+                            Paid {inr(pay.received)}
+                          </Chip>
+                          <Chip size="sm" color={pay.due > 0 ? "danger" : "default"} variant="flat">
+                            Due {inr(pay.due)}
+                          </Chip>
+                        </>
+                      ) : (
+                        <Chip size="sm" variant="flat">
+                          No amount yet
+                        </Chip>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <span className="text-xs text-foreground/50 shrink-0 pr-8" style={{ fontFamily: "var(--font-mono)" }}>
                   {o.eventDate || "no date"}
@@ -68,7 +97,8 @@ function OrdersList({
             </CardBody>
           </Link>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -183,7 +213,7 @@ export default function OrdersPage() {
           classNames={{ tabList: "bg-content1", panel: "pt-6" }}
         >
           <Tab key="orders" title="Orders">
-            <OrdersList orders={orders} selectable selected={selectedIds} onToggle={toggleSelected} />
+            <OrdersList orders={orders} isOwner={isOwner} selectable selected={selectedIds} onToggle={toggleSelected} />
           </Tab>
           {isOwner && (
             <Tab key="invoices" title="Invoices">

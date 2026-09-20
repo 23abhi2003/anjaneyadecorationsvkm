@@ -1,8 +1,9 @@
 "use client";
 
 import { jsPDF } from "jspdf";
-import type { Order } from "./types";
+import type { Order, OrderPayment } from "./types";
 import { collectItemLines, mapsLinkForOrder } from "./orderDisplay";
+import { invoiceMoney, niceDate } from "./invoicePay";
 import { loadTeluguFonts, teluguTextToImage, wrapTeluguText, type TeluguTextStyle } from "./telugu/teluguText";
 import {
   LABELS_TE,
@@ -151,6 +152,17 @@ function ensureSpace(doc: jsPDF, y: number, needed = 8): number {
   return y;
 }
 
+/** Payments after the advance, oldest first (date, then the moment they were recorded). */
+function sortedPayments(payments: OrderPayment[]): OrderPayment[] {
+  return [...payments].sort((a, b) => (a.date + (a.createdAt || "")).localeCompare(b.date + (b.createdAt || "")));
+}
+
+/** "2026-09-10" -> "10-09-2026" — digits only, so it renders inside the Telugu-font images too. */
+function numericDate(iso?: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : iso || "";
+}
+
 function writeLine(doc: jsPDF, label: string, value: string, x: number, y: number): number {
   doc.setTextColor(...COLORS.aubergine);
   doc.setFont("helvetica", "bold");
@@ -240,13 +252,31 @@ export async function generateInvoicePdf(order: Order, language: InvoiceLanguage
   doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
   y += 8;
 
-  const total = parseFloat(order.invoice.totalAmount || "0") || 0;
-  const advance = parseFloat(order.invoice.advancePaid || "0") || 0;
-  const due = Math.max(total - advance, 0);
+  const { total, advance, received, due, payments } = invoiceMoney(order.invoice);
 
   y = sectionTitle(doc, "Payment", y, COLORS.royal);
   y = writeLine(doc, "Total amount", `Rs. ${total.toLocaleString("en-IN")}`, MARGIN, y);
-  y = writeLine(doc, "Advance paid", `Rs. ${advance.toLocaleString("en-IN")}`, MARGIN, y);
+  y = writeLine(
+    doc,
+    "Advance paid",
+    `Rs. ${advance.toLocaleString("en-IN")}${advance > 0 && order.invoice.advanceDate ? `  (${niceDate(order.invoice.advanceDate)})` : ""}`,
+    MARGIN,
+    y,
+  );
+  sortedPayments(payments).forEach((p, i) => {
+    y = ensureSpace(doc, y);
+    const amt = parseFloat(p.amount) || 0;
+    y = writeLine(
+      doc,
+      `Payment ${i + 1}`,
+      `Rs. ${amt.toLocaleString("en-IN")}  (${niceDate(p.date)}${p.mode ? `, ${p.mode}` : ""})`,
+      MARGIN,
+      y,
+    );
+  });
+  if (payments.length > 0) {
+    y = writeLine(doc, "Total paid", `Rs. ${received.toLocaleString("en-IN")}`, MARGIN, y);
+  }
 
   doc.setFillColor(...COLORS.gold);
   doc.setDrawColor(...COLORS.gold);
@@ -376,13 +406,33 @@ async function generateInvoicePdfTelugu(order: Order): Promise<void> {
   doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
   y += 8;
 
-  const total = parseFloat(order.invoice.totalAmount || "0") || 0;
-  const advance = parseFloat(order.invoice.advancePaid || "0") || 0;
-  const due = Math.max(total - advance, 0);
+  const { total, advance, received, due, payments } = invoiceMoney(order.invoice);
 
   y = sectionTitleTe(doc, LABELS_TE.payment, y, COLORS.royal);
   y = writeLineTe(doc, LABELS_TE.totalAmount, formatRupeesTe(total), MARGIN, y, true);
-  y = writeLineTe(doc, LABELS_TE.advancePaid, formatRupeesTe(advance), MARGIN, y, true);
+  y = writeLineTe(
+    doc,
+    LABELS_TE.advancePaid,
+    `${formatRupeesTe(advance)}${advance > 0 && order.invoice.advanceDate ? `  (${numericDate(order.invoice.advanceDate)})` : ""}`,
+    MARGIN,
+    y,
+    true,
+  );
+  sortedPayments(payments).forEach((p, i) => {
+    y = ensureSpace(doc, y);
+    const amt = parseFloat(p.amount) || 0;
+    y = writeLineTe(
+      doc,
+      `${LABELS_TE.payment} ${i + 1}`,
+      `${formatRupeesTe(amt)}  (${numericDate(p.date)}${p.mode ? `, ${translatePaymentType(p.mode)}` : ""})`,
+      MARGIN,
+      y,
+      true,
+    );
+  });
+  if (payments.length > 0) {
+    y = writeLineTe(doc, LABELS_TE.totalPaid, formatRupeesTe(received), MARGIN, y, true);
+  }
 
   doc.setFillColor(...COLORS.gold);
   doc.setDrawColor(...COLORS.gold);
@@ -619,12 +669,11 @@ export async function generateCombinedOrdersPdf(orders: Order[], isOwner: boolea
     py += 3;
 
     if (isOwner) {
-      const total = parseFloat(order.invoice?.totalAmount || "0") || 0;
-      const advance = parseFloat(order.invoice?.advancePaid || "0") || 0;
-      const due = Math.max(total - advance, 0);
+      const { total, advance, later, due } = invoiceMoney(order.invoice);
       py = sectionTitle(doc, "Payment", py, COLORS.royal);
       py = writeLine(doc, "Total amount", `Rs. ${total.toLocaleString("en-IN")}`, MARGIN, py);
       py = writeLine(doc, "Advance paid", `Rs. ${advance.toLocaleString("en-IN")}`, MARGIN, py);
+      if (later > 0) py = writeLine(doc, "Payments", `Rs. ${later.toLocaleString("en-IN")}`, MARGIN, py);
       py = writeLine(doc, "Due amount", `Rs. ${due.toLocaleString("en-IN")}`, MARGIN, py);
       py += 2;
     }

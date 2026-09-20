@@ -25,6 +25,7 @@ export const LABELS_TE = {
   payment: "చెల్లింపు",
   totalAmount: "మొత్తం సొమ్ము",
   advancePaid: "అడ్వాన్స్ చెల్లించినది",
+  totalPaid: "మొత్తం చెల్లించినది",
   dueAmount: "బాకీ మొత్తం",
   paymentType: "చెల్లింపు విధానం",
   notes: "గమనికలు",

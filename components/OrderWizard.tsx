@@ -20,6 +20,8 @@ import QtyField from "@/components/QtyField";
 import LocationField from "@/components/LocationField";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
+import { invoiceMoney, niceDate } from "@/lib/invoicePay";
+import { inr, todayLocalISO } from "@/lib/staffPay";
 import {
   PROGRAM_TYPES,
   TENT_SIZES,
@@ -118,7 +120,7 @@ const emptyForm: WizardForm = {
     flowers: {},
   },
   staffAssigned: [],
-  invoice: { totalAmount: "", advancePaid: "", paymentType: "" },
+  invoice: { totalAmount: "", advancePaid: "", advanceDate: "", paymentType: "" },
   notes: "",
 };
 
@@ -152,7 +154,10 @@ function orderToForm(order: Order): WizardForm {
     invoice: {
       totalAmount: order.invoice?.totalAmount || "",
       advancePaid: order.invoice?.advancePaid || "",
+      advanceDate: order.invoice?.advanceDate || "",
       paymentType: order.invoice?.paymentType || "",
+      // Read-only here: later payments are recorded on the order page. Kept only so "Due" counts them.
+      payments: order.invoice?.payments ?? [],
     },
     notes: order.notes || "",
   };
@@ -563,9 +568,8 @@ export default function OrderWizard({
     });
   }
 
-  const totalAmount = parseFloat(form.invoice.totalAmount) || 0;
-  const advancePaid = parseFloat(form.invoice.advancePaid) || 0;
-  const dueAmount = Math.max(totalAmount - advancePaid, 0);
+  // Due = total - advance - any payments already recorded on this order (edit mode).
+  const { due: dueAmount, later: laterPayments } = invoiceMoney(form.invoice);
 
   async function onSave(): Promise<void> {
     setSaving(true);
@@ -575,7 +579,14 @@ export default function OrderWizard({
         ...form,
         tenthouse: form.serviceType === "decoration" ? null : form.tenthouse,
         decoration: form.serviceType === "tenthouse" ? null : form.decoration,
-        invoice: { ...form.invoice, dueAmount: String(dueAmount) },
+        // `payments` is left out on purpose: the server owns the payment ledger.
+        invoice: {
+          totalAmount: form.invoice.totalAmount,
+          advancePaid: form.invoice.advancePaid,
+          advanceDate: form.invoice.advanceDate,
+          paymentType: form.invoice.paymentType,
+          dueAmount: String(dueAmount),
+        },
       };
       const res = isEdit
         ? await apiFetch(`/api/orders/${encodeURIComponent(initialOrder!.id)}`, {
@@ -875,7 +886,7 @@ export default function OrderWizard({
                   Skip / later
                 </Button>
               </div>
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-3 gap-4">
                 <Input
                   type="number"
                   label="Total amount (₹)"
@@ -888,7 +899,24 @@ export default function OrderWizard({
                   label="Advance paid (₹)"
                   variant="bordered"
                   value={form.invoice.advancePaid}
-                  onValueChange={(v) => setPath("invoice.advancePaid", v)}
+                  // Typing an advance fills in today's date if none is set yet (still editable).
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      invoice: {
+                        ...f.invoice,
+                        advancePaid: v,
+                        advanceDate: f.invoice.advanceDate || (parseFloat(v) > 0 ? todayLocalISO() : ""),
+                      },
+                    }))
+                  }
+                />
+                <Input
+                  type="date"
+                  label="Advance date"
+                  variant="bordered"
+                  value={form.invoice.advanceDate || ""}
+                  onValueChange={(v) => setPath("invoice.advanceDate", v)}
                 />
               </div>
               <div className="bg-primary/10 border border-primary/40 rounded-md px-4 py-3 flex items-center justify-between">
@@ -899,6 +927,13 @@ export default function OrderWizard({
                   ₹{dueAmount.toLocaleString("en-IN")}
                 </span>
               </div>
+              <p className="text-xs text-foreground/50">
+                {laterPayments > 0
+                  ? `Includes ${inr(laterPayments)} of later payments already recorded on this order. `
+                  : ""}
+                When the customer pays more later, open the order and use “Record a payment” — each one is saved with its date
+                and note, and the due amount drops automatically.
+              </p>
               <div>
                 <p className="text-xs uppercase tracking-wide text-foreground/50 mb-2" style={{ fontFamily: "var(--font-mono)" }}>
                   Type of payment
@@ -918,7 +953,7 @@ export default function OrderWizard({
 
           {step === "review" && (
             <>
-              <ReviewSummary form={form} dueAmount={dueAmount} onEdit={goToStep} isOwner={isOwner} />
+              <ReviewSummary form={form} dueAmount={dueAmount} laterPayments={laterPayments} onEdit={goToStep} isOwner={isOwner} />
               {error && <p className="text-sm text-danger">{error}</p>}
             </>
           )}
@@ -1059,11 +1094,13 @@ function EditButton({ onPress }: { onPress: () => void }) {
 function ReviewSummary({
   form,
   dueAmount,
+  laterPayments,
   onEdit,
   isOwner,
 }: {
   form: WizardForm;
   dueAmount: number;
+  laterPayments: number;
   onEdit: (step: StepKey) => void;
   isOwner: boolean;
 }) {
@@ -1161,7 +1198,9 @@ function ReviewSummary({
           </div>
           <div className="flex justify-between bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
             <span>
-              Total ₹{form.invoice.totalAmount || 0} · Advance ₹{form.invoice.advancePaid || 0} · Payment{" "}
+              Total ₹{form.invoice.totalAmount || 0} · Advance ₹{form.invoice.advancePaid || 0}
+              {form.invoice.advanceDate ? ` (${niceDate(form.invoice.advanceDate)})` : ""}
+              {laterPayments > 0 ? ` · Later payments ${inr(laterPayments)}` : ""} · Payment{" "}
               {form.invoice.paymentType || "—"}
             </span>
             <span className="text-warning" style={{ fontFamily: "var(--font-display)" }}>

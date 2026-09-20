@@ -236,7 +236,7 @@ export default function StaffAssignmentsClient({
                               <p>{inr(money.total)}</p>
                               {money.status === "due" && money.advances > 0 && (
                                 <p className="text-xs text-foreground/50">
-                                  Advance {inr(money.advances)} &middot; Due {inr(money.due)}
+                                  Paid {inr(money.paid)} &middot; Due {inr(money.due)}
                                 </p>
                               )}
                             </div>
@@ -313,8 +313,8 @@ export default function StaffAssignmentsClient({
                                 color="success"
                                 radius="sm"
                                 onPress={() => setPayOrderId(a.orderId)}
-                                aria-label={isOwner ? "Record or view advances" : "View advances"}
-                                title={isOwner ? "Advances given" : "View advances"}
+                                aria-label={isOwner ? "Record or view payments" : "View payments"}
+                                title={isOwner ? "Advance & payments" : "View payments"}
                               >
                                 <Wallet size={16} />
                               </Button>
@@ -368,7 +368,8 @@ export default function StaffAssignmentsClient({
           {isOwner && (
             <p className="text-xs text-foreground/40">
               Editing here updates the underlying order too, so the fix sticks. Paid means fully settled; use the
-              wallet button to record advances given before that — they are subtracted from the amount.
+              wallet button to record the advance and any later payments (each with its date and note) — they are
+              subtracted from the amount and the rest shows as Due.
             </p>
           )}
         </CardBody>

@@ -105,11 +105,32 @@ export interface StaffAssignment {
   payments?: StaffPayment[];
 }
 
+/**
+ * One payment the CUSTOMER made against an order, after the advance.
+ * (The advance itself is `invoice.advancePaid` + `invoice.advanceDate`.)
+ */
+export interface OrderPayment {
+  id: string;
+  /** Rupees, as a string (like every other amount in the app). */
+  amount: string;
+  /** YYYY-MM-DD — the day the customer actually paid. */
+  date: string;
+  /** "UPI" | "Cash" | "Other" */
+  mode: string;
+  note: string;
+  createdAt?: string;
+}
+
 export interface InvoiceInfo {
   totalAmount: string;
   advancePaid: string;
+  /** YYYY-MM-DD the advance was received. Optional — older orders don't have it. */
+  advanceDate?: string;
+  /** Computed by the server: total - advance - sum(payments). */
   dueAmount?: string;
   paymentType: string;
+  /** Payments after the advance. Managed by the server (add/delete via /api/orders/:id/payments). */
+  payments?: OrderPayment[];
 }
 
 export interface LegacyItem {

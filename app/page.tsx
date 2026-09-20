@@ -8,6 +8,7 @@ import DashboardSearch from "@/components/DashboardSearch";
 import NavCard from "@/components/NavCard";
 import { useAuth } from "@/lib/Auth";
 import type { Order, Customer, StaffMember } from "@/lib/types";
+import { invoiceMoney } from "@/lib/invoicePay";
 
 function daysUntil(dateStr: string | null): number {
   if (!dateStr) return Infinity;
@@ -41,12 +42,9 @@ function orderTotal(o: Order): number {
   return parseFloat(o.invoice?.totalAmount || "0") || 0;
 }
 
-function orderAdvance(o: Order): number {
-  return parseFloat(o.invoice?.advancePaid || "0") || 0;
-}
-
+/** What's still owed: total - advance - every later payment. */
 function orderDue(o: Order): number {
-  return Math.max(orderTotal(o) - orderAdvance(o), 0);
+  return invoiceMoney(o.invoice).due;
 }
 
 /** Which dashboard card is currently driving the "Total orders" list below. */

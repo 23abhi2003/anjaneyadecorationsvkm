@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Chip } from "@heroui/react";
 import type { Order, OrderStatus } from "@/lib/types";
+import { invoiceMoney } from "@/lib/invoicePay";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -15,22 +16,21 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
 
   return (
     <div className="bg-content1 rounded-lg p-2 overflow-x-auto">
-      <Table removeWrapper aria-label="Invoices" className="min-w-[720px]">
+      <Table removeWrapper aria-label="Invoices" className="min-w-[820px]">
         <TableHeader>
           <TableColumn>ORDER</TableColumn>
           <TableColumn>CUSTOMER</TableColumn>
           <TableColumn>DATE</TableColumn>
           <TableColumn>TOTAL</TableColumn>
           <TableColumn>ADVANCE</TableColumn>
+          <TableColumn>PAYMENTS</TableColumn>
           <TableColumn>DUE</TableColumn>
           <TableColumn>PAYMENT</TableColumn>
           <TableColumn>STATUS</TableColumn>
         </TableHeader>
         <TableBody emptyContent="No orders yet.">
           {rows.map((o) => {
-            const total = parseFloat(o.invoice?.totalAmount || "0") || 0;
-            const advance = parseFloat(o.invoice?.advancePaid || "0") || 0;
-            const due = Math.max(total - advance, 0);
+            const { total, advance, later, due } = invoiceMoney(o.invoice);
             return (
               <TableRow key={o.id} className="cursor-pointer">
                 <TableCell>
@@ -42,6 +42,7 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
                 <TableCell>{o.eventDate || "—"}</TableCell>
                 <TableCell>₹{total.toLocaleString("en-IN")}</TableCell>
                 <TableCell>₹{advance.toLocaleString("en-IN")}</TableCell>
+                <TableCell>₹{later.toLocaleString("en-IN")}</TableCell>
                 <TableCell className={due > 0 ? "text-warning font-semibold" : ""}>₹{due.toLocaleString("en-IN")}</TableCell>
                 <TableCell>{o.invoice?.paymentType || "—"}</TableCell>
                 <TableCell>

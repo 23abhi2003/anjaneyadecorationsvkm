@@ -21,6 +21,7 @@ import {
   Cell,
 } from "recharts";
 import type { Order, StaffMember } from "@/lib/types";
+import { invoiceMoney } from "@/lib/invoicePay";
 
 const PIE_COLORS = ["#D9A427", "#5B2674", "#3F6B1F", "#8B4A15", "#6E1F3A"];
 
@@ -59,7 +60,7 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
       const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
       const entry = map.get(key) || { month: label, revenue: 0, collected: 0 };
       entry.revenue += parseFloat(o.invoice?.totalAmount || "0") || 0;
-      entry.collected += parseFloat(o.invoice?.advancePaid || "0") || 0;
+      entry.collected += invoiceMoney(o.invoice).received;
       map.set(key, entry);
     });
     return Array.from(map.entries())
@@ -91,7 +92,7 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
   }, [staff, filtered]);
 
   const totalRevenue = filtered.reduce((sum, o) => sum + (parseFloat(o.invoice?.totalAmount || "0") || 0), 0);
-  const totalCollected = filtered.reduce((sum, o) => sum + (parseFloat(o.invoice?.advancePaid || "0") || 0), 0);
+  const totalCollected = filtered.reduce((sum, o) => sum + invoiceMoney(o.invoice).received, 0);
   const totalDue = Math.max(totalRevenue - totalCollected, 0);
 
   return (

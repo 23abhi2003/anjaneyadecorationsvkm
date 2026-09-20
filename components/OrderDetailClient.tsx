@@ -19,12 +19,14 @@ import {
   DropdownItem,
 } from "@heroui/react";
 import Image from "next/image";
-import type { Order, OrderStatus, CompletionStatus, StaffMember } from "@/lib/types";
+import { Trash2 } from "lucide-react";
+import type { Order, OrderStatus, CompletionStatus, OrderPayment, StaffMember } from "@/lib/types";
 import { collectItemLines, mapsLinkForOrder, waLink, buildStaffWhatsAppMessage } from "@/lib/orderDisplay";
 import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile, type InvoiceLanguage } from "@/lib/pdf";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import { assignmentMoney, inr } from "@/lib/staffPay";
+import { assignmentMoney, inr, todayLocalISO } from "@/lib/staffPay";
+import { invoiceMoney, niceDate } from "@/lib/invoicePay";
 
 const PAYMENT_OPTIONS: string[] = ["UPI", "Cash", "Other"];
 
@@ -44,8 +46,23 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   const [invoice, setInvoice] = useState({
     totalAmount: order.invoice?.totalAmount || "",
     advancePaid: order.invoice?.advancePaid || "",
+    advanceDate: order.invoice?.advanceDate || "",
     paymentType: order.invoice?.paymentType || "",
   });
+  // What the server currently has for total/advance. Payments are validated against these,
+  // so recording one while the fields above are edited-but-unsaved would be checked against stale numbers.
+  const [savedInvoice, setSavedInvoice] = useState({
+    totalAmount: order.invoice?.totalAmount || "",
+    advancePaid: order.invoice?.advancePaid || "",
+  });
+  // Payments the customer made after the advance. Server-owned: changed only via the endpoints below.
+  const [payments, setPayments] = useState<OrderPayment[]>(order.invoice?.payments ?? []);
+  const [payAmount, setPayAmount] = useState("");
+  const [payDate, setPayDate] = useState(todayLocalISO());
+  const [payMode, setPayMode] = useState<string>("Cash");
+  const [payNote, setPayNote] = useState("");
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState("");
   const [notes, setNotes] = useState(order.notes || "");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -56,9 +73,10 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   // window.open() per real click, so the rest wait here for a "Send to next" click.
   const [staffQueue, setStaffQueue] = useState<{ staffId: string; name: string }[]>([]);
 
-  const total = parseFloat(invoice.totalAmount) || 0;
-  const advance = parseFloat(invoice.advancePaid) || 0;
-  const due = Math.max(total - advance, 0);
+  const { total, advance, received, due } = invoiceMoney({ ...invoice, payments });
+  const invoiceDirty = invoice.totalAmount !== savedInvoice.totalAmount || invoice.advancePaid !== savedInvoice.advancePaid;
+  // Invoice as the PDFs should see it (ledger included, due recomputed).
+  const invoiceForPdf = { ...invoice, payments, dueAmount: String(due) };
 
   // Mirrors the backend's computeOverallStatus() so the chip updates instantly, before save.
   const overallStatus: OrderStatus =
@@ -76,6 +94,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
       ...(isOwner
         ? {
             paymentCompletionStatus: paymentCompletion,
+            // `payments` is deliberately not sent — the server owns the ledger.
             invoice: { ...invoice, dueAmount: String(due) },
           }
         : {}),
@@ -88,6 +107,64 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     setSaving(false);
     if (res.ok) {
       setSavedAt(new Date());
+      setSavedInvoice({ totalAmount: invoice.totalAmount, advancePaid: invoice.advancePaid });
+    }
+  }
+
+  /** Records a payment the customer made after the advance (owner only). */
+  async function addPayment(): Promise<void> {
+    const value = parseFloat(payAmount);
+    if (!(value > 0)) {
+      setPayError("Enter an amount greater than 0.");
+      return;
+    }
+    if (value > due + 0.005) {
+      setPayError(`That is more than the remaining due (${inr(due)}).`);
+      return;
+    }
+    setPayBusy(true);
+    setPayError("");
+    try {
+      const res = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: payAmount, date: payDate, mode: payMode, note: payNote }),
+      });
+      if (res.ok) {
+        const updated = (await res.json()) as Order;
+        setPayments(updated.invoice?.payments ?? []);
+        setPayAmount("");
+        setPayNote("");
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setPayError(data.error || "Could not record the payment.");
+      }
+    } catch {
+      setPayError("Could not reach the server. Try again.");
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
+  async function removePayment(p: OrderPayment): Promise<void> {
+    if (!confirm(`Delete this ${inr(parseFloat(p.amount) || 0)} payment (${niceDate(p.date)})?`)) return;
+    setPayBusy(true);
+    setPayError("");
+    try {
+      const res = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/payments/${encodeURIComponent(p.id)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        const updated = (await res.json()) as Order;
+        setPayments(updated.invoice?.payments ?? []);
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setPayError(data.error || "Could not delete the payment.");
+      }
+    } catch {
+      setPayError("Could not reach the server. Try again.");
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -103,7 +180,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     setPdfBusy("invoice");
     try {
       await generateInvoicePdf(
-        { ...order, status: overallStatus, invoice: { ...invoice, dueAmount: String(due) }, notes },
+        { ...order, status: overallStatus, invoice: invoiceForPdf, notes },
         language,
       );
     } finally {
@@ -114,7 +191,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   async function onDownloadStaffReport(): Promise<void> {
     setPdfBusy("report");
     try {
-      await generateStaffReportPdf({ ...order, status: overallStatus, invoice: { ...invoice, dueAmount: String(due) }, notes });
+      await generateStaffReportPdf({ ...order, status: overallStatus, invoice: invoiceForPdf, notes });
     } finally {
       setPdfBusy(null);
     }
@@ -134,7 +211,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
       `Program: ${order.program?.type || order.serviceType}`,
       `Event date: ${order.eventDate || "-"}`,
       ...(isOwner
-        ? [`Total: ₹${total.toLocaleString("en-IN")}  Advance: ₹${advance.toLocaleString("en-IN")}  Due: ₹${due.toLocaleString("en-IN")}`]
+        ? [`Total: ₹${total.toLocaleString("en-IN")}  Paid: ₹${received.toLocaleString("en-IN")}  Due: ₹${due.toLocaleString("en-IN")}`]
         : []),
     ];
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
@@ -448,7 +525,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
                 <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-display)" }}>
                   Invoice
                 </h2>
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid sm:grid-cols-3 gap-4">
                   <Input
                     label="Total amount (₹)"
                     type="number"
@@ -461,18 +538,158 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
                     type="number"
                     variant="bordered"
                     value={invoice.advancePaid}
-                    onValueChange={(v) => setInvoice({ ...invoice, advancePaid: v })}
+                    // Typing an advance fills in today's date if none is set yet (still editable).
+                    onValueChange={(v) =>
+                      setInvoice({
+                        ...invoice,
+                        advancePaid: v,
+                        advanceDate: invoice.advanceDate || (parseFloat(v) > 0 ? todayLocalISO() : ""),
+                      })
+                    }
+                  />
+                  <Input
+                    label="Advance date"
+                    type="date"
+                    variant="bordered"
+                    value={invoice.advanceDate}
+                    onValueChange={(v) => setInvoice({ ...invoice, advanceDate: v })}
                   />
                 </div>
-                <div className="mt-4 bg-primary/10 border border-primary/40 rounded-md px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
-                    Due amount
-                  </span>
-                  <span className="text-xl text-warning" style={{ fontFamily: "var(--font-display)" }}>
-                    ₹{due.toLocaleString("en-IN")}
-                  </span>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-content2 rounded-md py-2">
+                    <p className="text-xs text-foreground/50">Total</p>
+                    <p className="font-semibold">{inr(total)}</p>
+                  </div>
+                  <div className="bg-content2 rounded-md py-2">
+                    <p className="text-xs text-foreground/50">Received</p>
+                    <p className="font-semibold text-success">{inr(received)}</p>
+                  </div>
+                  <div className="bg-primary/10 border border-primary/40 rounded-md py-2">
+                    <p className="text-xs text-foreground/50">Remaining due</p>
+                    <p className="font-semibold text-warning">{inr(due)}</p>
+                  </div>
                 </div>
-                <div className="mt-4 flex gap-2">
+                {total > 0 && due === 0 && paymentCompletion !== "completed" && (
+                  <p className="text-xs text-success mt-2">
+                    Fully paid — set “Payment completion” above to completed and save to close this order.
+                  </p>
+                )}
+
+                <div className="mt-5">
+                  <p className="text-sm font-semibold mb-2">Payments received</p>
+                  {advance <= 0 && payments.length === 0 ? (
+                    <p className="text-sm text-foreground/50">Nothing received yet.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {advance > 0 && (
+                        <li className="flex items-center justify-between gap-3 bg-content2 rounded-md px-3 py-2">
+                          <p className="text-sm">
+                            <Chip size="sm" variant="flat" color="warning" className="mr-2">
+                              Advance
+                            </Chip>
+                            <span className="font-semibold">{inr(advance)}</span>
+                            <span className="text-foreground/50">
+                              {invoice.advanceDate ? ` · ${niceDate(invoice.advanceDate)}` : " · no date"}
+                            </span>
+                          </p>
+                        </li>
+                      )}
+                      {[...payments]
+                        .sort((a, b) => (a.date + (a.createdAt || "")).localeCompare(b.date + (b.createdAt || "")))
+                        .map((p) => (
+                          <li key={p.id} className="flex items-center justify-between gap-3 bg-content2 rounded-md px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-sm">
+                                <Chip size="sm" variant="flat" color="success" className="mr-2">
+                                  Payment
+                                </Chip>
+                                <span className="font-semibold">{inr(parseFloat(p.amount) || 0)}</span>
+                                <span className="text-foreground/50">
+                                  {" "}
+                                  &middot; {niceDate(p.date)} &middot; {p.mode}
+                                </span>
+                              </p>
+                              {p.note && <p className="text-xs text-foreground/60 break-words mt-0.5">{p.note}</p>}
+                            </div>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              color="danger"
+                              radius="sm"
+                              isDisabled={payBusy}
+                              onPress={() => removePayment(p)}
+                              aria-label="Delete payment"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="mt-4 border-t border-content3 pt-4 space-y-3">
+                  <p className="text-sm font-semibold">Record a payment</p>
+                  {invoiceDirty ? (
+                    <p className="text-xs text-warning">
+                      You changed the total or advance — press “Save changes” below first, then record the payment.
+                    </p>
+                  ) : total <= 0 ? (
+                    <p className="text-xs text-foreground/50">Set the total amount and save first, then you can record payments.</p>
+                  ) : due <= 0 ? (
+                    <p className="text-xs text-foreground/50">Nothing left to pay — this order is paid in full.</p>
+                  ) : (
+                    <>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <Input
+                          label="Amount (₹)"
+                          variant="bordered"
+                          inputMode="decimal"
+                          value={payAmount}
+                          onValueChange={(v) => setPayAmount(v.replace(/[^\d.]/g, ""))}
+                          description={
+                            <button type="button" className="text-primary underline" onClick={() => setPayAmount(String(due))}>
+                              Fill full due ({inr(due)})
+                            </button>
+                          }
+                        />
+                        <Input label="Date paid" type="date" variant="bordered" value={payDate} onValueChange={setPayDate} />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {PAYMENT_OPTIONS.map((t) => (
+                          <Button
+                            key={t}
+                            size="sm"
+                            radius="full"
+                            variant={payMode === t ? "solid" : "bordered"}
+                            color={payMode === t ? "secondary" : "default"}
+                            onPress={() => setPayMode(t)}
+                          >
+                            {t}
+                          </Button>
+                        ))}
+                      </div>
+                      <Input
+                        label="Note (optional)"
+                        placeholder="e.g. second instalment, paid at the shop"
+                        variant="bordered"
+                        value={payNote}
+                        onValueChange={setPayNote}
+                        maxLength={200}
+                      />
+                      <Button color="primary" radius="sm" className="font-semibold" isLoading={payBusy} onPress={addPayment}>
+                        Add payment
+                      </Button>
+                    </>
+                  )}
+                  {payError && <p className="text-sm text-danger">{payError}</p>}
+                </div>
+                <p className="text-xs uppercase tracking-wide text-foreground/50 mt-5 mb-2" style={{ fontFamily: "var(--font-mono)" }}>
+                  Type of payment
+                </p>
+                <div className="flex gap-2">
                   {PAYMENT_OPTIONS.map((t) => (
                     <Button
                       key={t}

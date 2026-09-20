@@ -16,13 +16,18 @@ import type { StaffAssignmentRecord, StaffMember } from "@/lib/types";
 import { PAYMENT_TYPES } from "@/lib/catalog";
 import { apiFetch } from "@/lib/api";
 import { assignmentMoney, inr, todayLocalISO } from "@/lib/staffPay";
+import { niceDate } from "@/lib/invoicePay";
 
 /**
- * Advances given to one staff member for one job.
+ * Money given to one staff member for one job.
  *
- * The owner records each amount handed over (date, mode, note); every advance
- * is subtracted from the assignment's amount, and what is left is the "Due".
- * Staff opening their own page see the same list read-only.
+ * Example: amount 2000 -> advance 500 (dated) -> later payment 500 (dated, with a note)
+ *          -> paid so far 1000, remaining due 1000.
+ *
+ * The owner records each amount handed over (date, mode, note); the first one is shown
+ * as the "Advance", the rest as "Payment"s. Every one is subtracted from the assignment's
+ * amount, and what is left is the remaining due. Staff opening their own page see the
+ * same list read-only.
  */
 export default function StaffPaymentsModal({
   staff,
@@ -58,7 +63,10 @@ export default function StaffPaymentsModal({
   if (!assignment) return null;
 
   const money = assignmentMoney(assignment);
-  const payments = assignment.payments ?? [];
+  // Oldest first, so the first entry is the advance and the rest are later payments.
+  const payments = [...(assignment.payments ?? [])].sort((a, b) =>
+    (a.date + (a.createdAt || "")).localeCompare(b.date + (b.createdAt || ""))
+  );
   const canAdd = isOwner && money.status === "due" && money.total > 0 && money.due > 0;
   const base = `/api/staff/${encodeURIComponent(staff.id)}/assignments/${encodeURIComponent(assignment.orderId)}/payments`;
 
@@ -121,7 +129,7 @@ export default function StaffPaymentsModal({
           <>
             <ModalHeader className="flex flex-col gap-0.5" style={{ fontFamily: "var(--font-display)" }}>
               <span>
-                {staff.name} — advances
+                {staff.name} — payments
               </span>
               <span className="text-xs font-normal text-foreground/50">
                 {assignment.orderId} &middot; {assignment.customerName || "—"}
@@ -132,15 +140,15 @@ export default function StaffPaymentsModal({
             <ModalBody className="space-y-4">
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-content2 rounded-md py-2">
-                  <p className="text-xs text-foreground/50">Amount</p>
+                  <p className="text-xs text-foreground/50">Total amount</p>
                   <p className="font-semibold">{inr(money.total)}</p>
                 </div>
                 <div className="bg-content2 rounded-md py-2">
-                  <p className="text-xs text-foreground/50">Advances given</p>
-                  <p className="font-semibold text-success">{inr(money.advances)}</p>
+                  <p className="text-xs text-foreground/50">Paid so far</p>
+                  <p className="font-semibold text-success">{inr(money.paid)}</p>
                 </div>
                 <div className="bg-content2 rounded-md py-2">
-                  <p className="text-xs text-foreground/50">Due</p>
+                  <p className="text-xs text-foreground/50">Remaining due</p>
                   <p className="font-semibold text-warning">{inr(money.due)}</p>
                 </div>
               </div>
@@ -157,17 +165,20 @@ export default function StaffPaymentsModal({
               <div>
                 <p className="text-sm font-semibold mb-2">Payments recorded</p>
                 {payments.length === 0 ? (
-                  <p className="text-sm text-foreground/50">No advance has been recorded for this job yet.</p>
+                  <p className="text-sm text-foreground/50">No advance or payment has been recorded for this job yet.</p>
                 ) : (
                   <ul className="space-y-1.5">
-                    {payments.map((p) => (
+                    {payments.map((p, i) => (
                       <li key={p.id} className="flex items-center justify-between gap-3 bg-content2 rounded-md px-3 py-2">
                         <div className="min-w-0">
                           <p className="text-sm">
+                            <Chip size="sm" variant="flat" color={i === 0 ? "warning" : "success"} className="mr-2">
+                              {i === 0 ? "Advance" : "Payment"}
+                            </Chip>
                             <span className="font-semibold">{inr(parseFloat(p.amount) || 0)}</span>
                             <span className="text-foreground/50">
                               {" "}
-                              &middot; {p.date} &middot; {p.mode}
+                              &middot; {niceDate(p.date)} &middot; {p.mode}
                             </span>
                           </p>
                           {p.note && <p className="text-xs text-foreground/60 break-words">{p.note}</p>}
@@ -194,7 +205,7 @@ export default function StaffPaymentsModal({
 
               {isOwner && canAdd && (
                 <div className="border-t border-content3 pt-4 space-y-3">
-                  <p className="text-sm font-semibold">Record an advance</p>
+                  <p className="text-sm font-semibold">{payments.length === 0 ? "Record the advance" : "Record a payment"}</p>
                   <div className="grid sm:grid-cols-2 gap-3">
                     <Input
                       label="Amount (₹)"
@@ -212,7 +223,7 @@ export default function StaffPaymentsModal({
                         </button>
                       }
                     />
-                    <Input label="Date" type="date" variant="bordered" value={date} onValueChange={setDate} />
+                    <Input label="Date paid" type="date" variant="bordered" value={date} onValueChange={setDate} />
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {PAYMENT_TYPES.map((t) => (
@@ -230,14 +241,14 @@ export default function StaffPaymentsModal({
                   </div>
                   <Input
                     label="Note (optional)"
-                    placeholder="e.g. travel money, given at the shop"
+                    placeholder="e.g. travel money, second instalment"
                     variant="bordered"
                     value={note}
                     onValueChange={setNote}
                     maxLength={200}
                   />
                   <Button color="primary" radius="sm" className="font-semibold" isLoading={busy} onPress={addPayment}>
-                    Add payment
+                    {payments.length === 0 ? "Add advance" : "Add payment"}
                   </Button>
                 </div>
               )}
@@ -245,10 +256,10 @@ export default function StaffPaymentsModal({
               {isOwner && !canAdd && (
                 <p className="text-xs text-foreground/50 border-t border-content3 pt-3">
                   {money.total <= 0
-                    ? "Set this staff member's amount first (Edit on the assignments page), then you can record advances."
+                    ? "Set this staff member's amount first (Edit on the assignments page), then you can record payments."
                     : money.status === "paid"
-                      ? "This job is marked Paid. To record another advance, set it back to Due with Edit."
-                      : "Nothing left to pay — the advances cover the full amount."}
+                      ? "This job is marked Paid. To record another payment, set it back to Due with Edit."
+                      : "Nothing left to pay — the payments cover the full amount."}
                 </p>
               )}
 

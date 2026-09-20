@@ -226,11 +226,12 @@ export default function CustomersClient({
       </div>
 
       <div className="bg-content1 rounded-lg p-2 overflow-x-auto">
-        <Table removeWrapper aria-label="Customers" className="min-w-[640px]">
+        <Table removeWrapper aria-label="Customers" className="min-w-[720px]">
           <TableHeader>
             <TableColumn>NAME</TableColumn>
             <TableColumn>PHONE</TableColumn>
             <TableColumn>TYPE</TableColumn>
+            <TableColumn>REFERRED BY</TableColumn>
             <TableColumn>ORDERS</TableColumn>
             <TableColumn>{isOwner ? "ACTIONS" : ""}</TableColumn>
           </TableHeader>
@@ -244,6 +245,7 @@ export default function CustomersClient({
                     {c.type}
                   </Chip>
                 </TableCell>
+                <TableCell>{c.referredBy?.trim() || "—"}</TableCell>
                 <TableCell>{c.orderCount}</TableCell>
                 <TableCell>
                   {isOwner ? (

@@ -16,13 +16,15 @@ import {
   TableRow,
   TableCell,
 } from "@heroui/react";
-import { Pencil, Check, X, ArrowLeft } from "lucide-react";
+import { Pencil, Check, X, ArrowLeft, Wallet } from "lucide-react";
 import type { DateValue } from "@react-types/datepicker";
 import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
-import type { StaffAssignmentRecord, StaffMember } from "@/lib/types";
+import type { StaffAssignmentRecord, StaffMember, StaffPaymentStatus } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
+import { assignmentMoney, inr, summarizeAssignments } from "@/lib/staffPay";
+import StaffPaymentsModal from "@/components/StaffPaymentsModal";
 
 /** Parses an order/assignment date string (YYYY-MM-DD) into a comparable Date, tolerating blanks. */
 function toDate(d?: string): Date | null {
@@ -46,6 +48,7 @@ interface RowEditState {
   date: string;
   program: string;
   customerName: string;
+  paymentStatus: StaffPaymentStatus;
 }
 
 export default function StaffAssignmentsClient({
@@ -65,16 +68,26 @@ export default function StaffAssignmentsClient({
   // Owner-only inline editing. Keyed by orderId since that's what the edit
   // endpoint is keyed on. Only one row can be edited at a time.
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<RowEditState>({ amount: "", date: "", program: "", customerName: "" });
+  const [editState, setEditState] = useState<RowEditState>({
+    amount: "",
+    date: "",
+    program: "",
+    customerName: "",
+    paymentStatus: "due",
+  });
   const [savingRow, setSavingRow] = useState(false);
   const [rowError, setRowError] = useState("");
+
+  // Which assignment's advances modal is open (by orderId). The data itself is read from
+  // `staff.assignments`, so it refreshes in place after a payment is added/removed.
+  const [payOrderId, setPayOrderId] = useState<string | null>(null);
 
   // All hooks must run unconditionally before any early return below.
   const filtered = useMemo(
     () => (staff.assignments || []).filter((a) => withinRange(a.date, range)),
     [staff.assignments, range]
   );
-  const total = filtered.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+  const totals = summarizeAssignments(filtered);
 
   // Staff can only view their own assignments; anyone else gets turned away.
   if (!isOwner && !isSelf) {
@@ -95,6 +108,7 @@ export default function StaffAssignmentsClient({
       date: a.date || "",
       program: a.program || "",
       customerName: a.customerName || "",
+      paymentStatus: a.paymentStatus === "paid" ? "paid" : "due",
     });
     setRowError("");
   }
@@ -107,10 +121,16 @@ export default function StaffAssignmentsClient({
   async function saveRow(orderId: string): Promise<void> {
     setSavingRow(true);
     setRowError("");
+    // Only send the status if it was actually changed, so editing just the amount lets the
+    // server settle the job automatically when advances already cover the new amount.
+    const original = (staff.assignments || []).find((x) => x.orderId === orderId);
+    const originalStatus: StaffPaymentStatus = original?.paymentStatus === "paid" ? "paid" : "due";
+    const { paymentStatus, ...fields } = editState;
+    const body = paymentStatus !== originalStatus ? { ...fields, paymentStatus } : fields;
     const res = await apiFetch(`/api/staff/${encodeURIComponent(staff.id)}/assignments/${encodeURIComponent(orderId)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editState),
+      body: JSON.stringify(body),
     });
     setSavingRow(false);
     if (res.ok) {
@@ -159,11 +179,13 @@ export default function StaffAssignmentsClient({
                   <TableColumn>CUSTOMER NAME</TableColumn>
                   <TableColumn>AMOUNT</TableColumn>
                   <TableColumn>DATE</TableColumn>
-                  <TableColumn>{isOwner ? "ACTIONS" : ""}</TableColumn>
+                  <TableColumn>STATUS</TableColumn>
+                  <TableColumn>ACTIONS</TableColumn>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((a) => {
                     const isEditing = isOwner && editingOrderId === a.orderId;
+                    const money = assignmentMoney(a);
                     return (
                       <TableRow key={a.orderId}>
                         <TableCell>
@@ -210,7 +232,14 @@ export default function StaffAssignmentsClient({
                               onValueChange={(v) => setEditState({ ...editState, amount: v.replace(/[^\d.]/g, "") })}
                             />
                           ) : (
-                            `₹${a.amount || 0}`
+                            <div>
+                              <p>{inr(money.total)}</p>
+                              {money.status === "due" && money.advances > 0 && (
+                                <p className="text-xs text-foreground/50">
+                                  Advance {inr(money.advances)} &middot; Due {inr(money.due)}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>
@@ -228,7 +257,29 @@ export default function StaffAssignmentsClient({
                           )}
                         </TableCell>
                         <TableCell>
-                          {!isOwner ? null : isEditing ? (
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              {(["due", "paid"] as const).map((st) => (
+                                <Button
+                                  key={st}
+                                  size="sm"
+                                  radius="full"
+                                  variant={editState.paymentStatus === st ? "solid" : "bordered"}
+                                  color={editState.paymentStatus === st ? (st === "paid" ? "success" : "warning") : "default"}
+                                  onPress={() => setEditState({ ...editState, paymentStatus: st })}
+                                >
+                                  {st === "paid" ? "Paid" : "Due"}
+                                </Button>
+                              ))}
+                            </div>
+                          ) : (
+                            <Chip size="sm" variant="flat" color={money.status === "paid" ? "success" : "warning"}>
+                              {money.status === "paid" ? "Paid" : "Due"}
+                            </Chip>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
                             <div className="flex items-center gap-1">
                               <Button
                                 isIconOnly
@@ -254,16 +305,32 @@ export default function StaffAssignmentsClient({
                               </Button>
                             </div>
                           ) : (
-                            <Button
-                              isIconOnly
-                              size="sm"
-                              variant="flat"
-                              radius="sm"
-                              onPress={() => startEdit(a)}
-                              aria-label="Edit assignment"
-                            >
-                              <Pencil size={16} />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                isIconOnly
+                                size="sm"
+                                variant="flat"
+                                color="success"
+                                radius="sm"
+                                onPress={() => setPayOrderId(a.orderId)}
+                                aria-label={isOwner ? "Record or view advances" : "View advances"}
+                                title={isOwner ? "Advances given" : "View advances"}
+                              >
+                                <Wallet size={16} />
+                              </Button>
+                              {isOwner && (
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="flat"
+                                  radius="sm"
+                                  onPress={() => startEdit(a)}
+                                  aria-label="Edit assignment"
+                                >
+                                  <Pencil size={16} />
+                                </Button>
+                              )}
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -280,23 +347,40 @@ export default function StaffAssignmentsClient({
           )}
 
           {filtered.length > 0 && isOwner && (
-            <div className="flex justify-between bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
               <span className="font-semibold" style={{ fontFamily: "var(--font-mono)" }}>
                 {range ? "Total (in range)" : "Total"}
               </span>
-              <Chip color="warning" variant="flat" className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-                ₹{total.toLocaleString("en-IN")}
-              </Chip>
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip color="warning" variant="flat" className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                  {inr(totals.total)}
+                </Chip>
+                <Chip color="success" variant="flat" className="font-semibold">
+                  Paid {inr(totals.paid)}
+                </Chip>
+                <Chip color="danger" variant="flat" className="font-semibold">
+                  Due {inr(totals.due)}
+                </Chip>
+              </div>
             </div>
           )}
 
           {isOwner && (
             <p className="text-xs text-foreground/40">
-              Editing here updates the underlying order too, so the fix sticks.
+              Editing here updates the underlying order too, so the fix sticks. Paid means fully settled; use the
+              wallet button to record advances given before that — they are subtracted from the amount.
             </p>
           )}
         </CardBody>
       </Card>
+
+      <StaffPaymentsModal
+        staff={staff}
+        assignment={(staff.assignments || []).find((x) => x.orderId === payOrderId) ?? null}
+        isOwner={isOwner}
+        onClose={() => setPayOrderId(null)}
+        onChanged={() => onChanged?.()}
+      />
     </div>
   );
 }

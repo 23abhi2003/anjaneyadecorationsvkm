@@ -49,7 +49,14 @@ import type {
 } from "@/lib/types";
 
 interface WizardForm {
-  customer: { name: string; phone: string; type: CustomerType; address: string; location: GeoLocation | null };
+  customer: {
+    name: string;
+    phone: string;
+    type: CustomerType;
+    address: string;
+    location: GeoLocation | null;
+    referredBy: string;
+  };
   serviceType: ServiceType;
   program: { type: string; name: string; images: string[] };
   eventDate: string;
@@ -68,7 +75,7 @@ function programLabel(program: { type?: string; name?: string } | null | undefin
 }
 
 const emptyForm: WizardForm = {
-  customer: { name: "", phone: "", type: "new", address: "", location: null },
+  customer: { name: "", phone: "", type: "new", address: "", location: null, referredBy: "" },
   serviceType: "",
   program: { type: "", name: "", images: [] },
   eventDate: "",
@@ -124,6 +131,7 @@ function orderToForm(order: Order): WizardForm {
       type: order.customer?.type || "new",
       address: order.customer?.address || "",
       location: order.customer?.location || null,
+      referredBy: order.customer?.referredBy || "",
     },
     serviceType: order.serviceType || "",
     program: {
@@ -245,7 +253,13 @@ function ChoiceChips({
 function OlderCustomerPicker({
   onPick,
 }: {
-  onPick: (customer: { name: string; phone: string; address: string; location: GeoLocation | null }) => void;
+  onPick: (customer: {
+    name: string;
+    phone: string;
+    address: string;
+    location: GeoLocation | null;
+    referredBy: string;
+  }) => void;
 }) {
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -291,6 +305,7 @@ function OlderCustomerPicker({
       phone: c.phone || "",
       address: c.address || "",
       location: c.location || null,
+      referredBy: c.referredBy || "",
     });
     setOrdersLoading(true);
     try {
@@ -610,7 +625,14 @@ export default function OrderWizard({
                   onPick={(c) =>
                     setForm((f) => ({
                       ...f,
-                      customer: { ...f.customer, name: c.name, phone: c.phone, address: c.address, location: c.location },
+                      customer: {
+                        ...f.customer,
+                        name: c.name,
+                        phone: c.phone,
+                        address: c.address,
+                        location: c.location,
+                        referredBy: c.referredBy,
+                      },
                     }))
                   }
                 />
@@ -635,6 +657,13 @@ export default function OrderWizard({
                 location={form.customer.location}
                 onAddressChange={(v) => setPath("customer.address", v)}
                 onLocationChange={(v) => setPath("customer.location", v)}
+              />
+              <Input
+                label="Referred by"
+                placeholder="Who referred this customer? (optional)"
+                variant="bordered"
+                value={form.customer.referredBy}
+                onValueChange={(v) => setPath("customer.referredBy", v)}
               />
             </>
           )}
@@ -943,7 +972,19 @@ function StaffStep({
 }) {
   function toggle(staffId: string, name: string): void {
     const exists = assigned.find((a) => a.staffId === staffId);
-    if (exists) onChange(assigned.filter((a) => a.staffId !== staffId));
+    if (exists) {
+      const given = (exists.payments ?? []).length;
+      if (
+        given > 0 &&
+        !confirm(
+          `${name} already has ${given} advance payment${given === 1 ? "" : "s"} recorded on this order. ` +
+            `Removing them from the order will delete those payment records. Remove anyway?`
+        )
+      ) {
+        return;
+      }
+      onChange(assigned.filter((a) => a.staffId !== staffId));
+    }
     else onChange([...assigned, { staffId, name, amount: "" }]);
   }
   function setAmount(staffId: string, amount: string): void {
@@ -1061,6 +1102,7 @@ function ReviewSummary({
           <p><span className="text-foreground/50">Customer:</span> {form.customer.name || "—"}</p>
           <p><span className="text-foreground/50">Phone:</span> {form.customer.phone || "—"}</p>
           <p><span className="text-foreground/50">Address:</span> {form.customer.address || "—"}</p>
+          <p><span className="text-foreground/50">Referred by:</span> {form.customer.referredBy?.trim() || "—"}</p>
           <p><span className="text-foreground/50">Service:</span> {form.serviceType || "—"}</p>
           <p>
             <span className="text-foreground/50">Program:</span>{" "}

@@ -18,6 +18,7 @@ import {
 import type { StaffMember } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
+import { inr, summarizeAssignments } from "@/lib/staffPay";
 
 interface StaffFormState {
   name: string;
@@ -131,7 +132,7 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
 
       <div className="grid sm:grid-cols-2 gap-4">
         {visibleStaff.map((s) => {
-          const totalAmount = (s.assignments || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+          const pay = summarizeAssignments(s.assignments || []);
           const totalEvents = (s.assignments || []).length;
           const canManage = isOwner || s.id === user?.staffId;
           return (
@@ -145,10 +146,20 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
                   </button>
                   {isOwner && (
                     <Chip color="warning" variant="flat">
-                      ₹{totalAmount.toLocaleString("en-IN")}
+                      {inr(pay.total)}
                     </Chip>
                   )}
                 </div>
+                {isOwner && pay.total > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <Chip size="sm" color="success" variant="flat">
+                      Paid {inr(pay.paid)}
+                    </Chip>
+                    <Chip size="sm" color={pay.due > 0 ? "danger" : "default"} variant="flat">
+                      Due {inr(pay.due)}
+                    </Chip>
+                  </div>
+                )}
                 <p className="text-xs text-foreground/50 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
                   {totalEvents} event{totalEvents === 1 ? "" : "s"} assigned &middot; {s.phone || "no phone on file"}
                 </p>
@@ -182,7 +193,7 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
         <ModalContent>
           {(onClose) => {
             if (!selected) return null;
-            const totalAmount = (selected.assignments || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+            const pay = summarizeAssignments(selected.assignments || []);
             const totalEvents = (selected.assignments || []).length;
             const canManage = isOwner || selected.id === user?.staffId;
             return (
@@ -198,10 +209,20 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
                     {totalEvents}
                   </p>
                   {isOwner && (
-                    <p className="text-sm text-foreground/70">
-                      <span className="text-foreground/50">Total earnings: </span>
-                      <span className="text-warning font-semibold">₹{totalAmount.toLocaleString("en-IN")}</span>
-                    </p>
+                    <>
+                      <p className="text-sm text-foreground/70">
+                        <span className="text-foreground/50">Total earnings: </span>
+                        <span className="text-warning font-semibold">{inr(pay.total)}</span>
+                      </p>
+                      <p className="text-sm text-foreground/70">
+                        <span className="text-foreground/50">Paid (incl. advances): </span>
+                        <span className="text-success font-semibold">{inr(pay.paid)}</span>
+                      </p>
+                      <p className="text-sm text-foreground/70">
+                        <span className="text-foreground/50">Still due: </span>
+                        <span className="text-danger font-semibold">{inr(pay.due)}</span>
+                      </p>
+                    </>
                   )}
                 </ModalBody>
                 <ModalFooter className="flex-wrap">

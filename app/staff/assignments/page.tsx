@@ -16,13 +16,16 @@ function StaffAssignmentsInner() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const load = useCallback(async () => {
+  // `silent` refreshes keep the page mounted (no spinner), so an open advances modal and the
+  // date-range filter survive a save. Only the first load shows the spinner.
+  const load = useCallback(
+    async (silent: boolean = false) => {
     if (!id) {
       setLoading(false);
       setNotFound(true);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     setNotFound(false);
     try {
       const res = await apiFetch(`/api/staff/${encodeURIComponent(id)}`);
@@ -37,7 +40,9 @@ function StaffAssignmentsInner() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+    },
+    [id]
+  );
 
   useEffect(() => {
     load();
@@ -62,7 +67,7 @@ function StaffAssignmentsInner() {
     );
   }
 
-  return <StaffAssignmentsClient staff={staffMember} onChanged={load} />;
+  return <StaffAssignmentsClient staff={staffMember} onChanged={() => load(true)} />;
 }
 
 export default function StaffAssignmentsPage() {

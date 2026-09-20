@@ -24,6 +24,7 @@ import { collectItemLines, mapsLinkForOrder, waLink, buildStaffWhatsAppMessage }
 import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile, type InvoiceLanguage } from "@/lib/pdf";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
+import { assignmentMoney, inr } from "@/lib/staffPay";
 
 const PAYMENT_OPTIONS: string[] = ["UPI", "Cash", "Other"];
 
@@ -248,6 +249,9 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
             {order.customer?.phone} &middot; {order.program?.type || order.serviceType} &middot; {order.eventDate || "no date"}
           </p>
           {order.customer?.address && <p className="text-[#F8F4E6]/50 text-sm mt-0.5">{order.customer.address}</p>}
+          {order.customer?.referredBy?.trim() && (
+            <p className="text-[#F8F4E6]/50 text-sm mt-0.5">Referred by {order.customer.referredBy.trim()}</p>
+          )}
           {mapsLink && (
             <a
               href={mapsLink}
@@ -383,11 +387,20 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
                   Staff assigned
                 </h2>
                 <div className="flex flex-wrap gap-2">
-                  {order.staffAssigned.map((s, i) => (
+                  {order.staffAssigned.map((s, i) => {
+                    const money = assignmentMoney(s);
+                    return (
                     <div key={i} className="flex items-center gap-1">
-                      <Chip variant="flat" color="warning">
+                      <Chip variant="flat" color={isOwner && money.status === "paid" ? "success" : "warning"}>
                         {s.name}
                         {isOwner ? ` — ₹${s.amount || 0}` : ""}
+                        {isOwner && money.total > 0
+                          ? money.status === "paid"
+                            ? " · Paid"
+                            : money.advances > 0
+                              ? ` · Due ${inr(money.due)}`
+                              : " · Due"
+                          : ""}
                       </Chip>
                       {isOwner && phoneForStaffId(s.staffId) && (
                         <Button
@@ -405,7 +418,8 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
                         </Button>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 {isOwner && order.staffAssigned.some((s) => !phoneForStaffId(s.staffId)) && (
                   <p className="text-xs text-foreground/40 mt-2" style={{ fontFamily: "var(--font-mono)" }}>

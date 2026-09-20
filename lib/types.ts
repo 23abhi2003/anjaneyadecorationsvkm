@@ -19,6 +19,8 @@ export interface CustomerInfo {
   type: CustomerType;
   address: string;
   location: GeoLocation | null;
+  /** Who referred this customer (free text, optional). */
+  referredBy?: string;
 }
 
 export interface ProgramInfo {
@@ -77,10 +79,30 @@ export interface DecorationInfo {
   flowers: QtyMap;
 }
 
+/** Has the owner fully settled what a staff member is owed for one job? ("paid" = fully settled) */
+export type StaffPaymentStatus = "due" | "paid";
+
+/** One advance the owner handed to a staff member before the final settlement. */
+export interface StaffPayment {
+  id: string;
+  /** Rupees, as a string (like every other amount in the app). */
+  amount: string;
+  /** YYYY-MM-DD */
+  date: string;
+  /** "UPI" | "Cash" | "Other" */
+  mode: string;
+  note: string;
+  createdAt?: string;
+}
+
 export interface StaffAssignment {
   staffId: string;
   name: string;
   amount: string;
+  /** Managed by the server. Missing on older orders -> treated as "due". */
+  paymentStatus?: StaffPaymentStatus;
+  /** Advances given. Managed by the server (record/delete via the Staff > assignments page). */
+  payments?: StaffPayment[];
 }
 
 export interface InvoiceInfo {
@@ -123,6 +145,7 @@ export interface Customer {
   type: CustomerType;
   address?: string;
   location?: GeoLocation | null;
+  referredBy?: string;
 }
 
 export interface StaffAssignmentRecord {
@@ -131,6 +154,8 @@ export interface StaffAssignmentRecord {
   customerName: string;
   amount: string;
   date?: string;
+  paymentStatus?: StaffPaymentStatus;
+  payments?: StaffPayment[];
 }
 
 export interface StaffMember {

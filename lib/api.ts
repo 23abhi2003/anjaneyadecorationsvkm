@@ -11,7 +11,7 @@ export const AUTH_STORAGE_KEY = "anjaneya_auth";
 
 interface StoredUser {
   role?: string;
-  staffId?: string;
+  staffId?: string; 
 }
 
 function getStoredUser(): StoredUser | null {

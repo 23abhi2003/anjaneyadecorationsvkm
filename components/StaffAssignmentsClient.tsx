@@ -9,6 +9,8 @@ import {
   Chip,
   DateRangePicker,
   Input,
+  Select,
+  SelectItem,
   Table,
   TableHeader,
   TableColumn,
@@ -16,7 +18,7 @@ import {
   TableRow,
   TableCell,
 } from "@heroui/react";
-import { Pencil, Check, X, ArrowLeft, Wallet } from "lucide-react";
+import { Pencil, Check, X, ArrowLeft, Wallet, Search } from "lucide-react";
 import type { DateValue } from "@react-types/datepicker";
 import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
@@ -43,6 +45,39 @@ function withinRange(dateStr: string | undefined, range: RangeValue<DateValue> |
   return d >= start && d <= end;
 }
 
+type SortOrder = "newest" | "oldest";
+
+/** Numeric part of an order id (ADVKM-0042 -> 42). Used only to break ties between same-day orders. */
+function orderSeq(orderId: string): number {
+  const m = /(\d+)\s*$/.exec(orderId);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * Sorts by event date. "newest" = present to past, "oldest" = past to present.
+ * Assignments with no date always sit at the bottom, whichever way you sort.
+ * Same-day orders fall back to order number so the list order is stable.
+ */
+function sortAssignments(list: StaffAssignmentRecord[], order: SortOrder): StaffAssignmentRecord[] {
+  const dir = order === "newest" ? -1 : 1;
+  return [...list].sort((a, b) => {
+    const da = toDate(a.date)?.getTime();
+    const db = toDate(b.date)?.getTime();
+    if (da === undefined && db === undefined) return dir * (orderSeq(a.orderId) - orderSeq(b.orderId));
+    if (da === undefined) return 1;
+    if (db === undefined) return -1;
+    if (da !== db) return dir * (da - db);
+    return dir * (orderSeq(a.orderId) - orderSeq(b.orderId));
+  });
+}
+
+/** Order filter: matches order id, program or customer name (case-insensitive, partial). */
+function matchesOrderQuery(a: StaffAssignmentRecord, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [a.orderId, a.program, a.customerName].some((f) => (f || "").toLowerCase().includes(q));
+}
+
 interface RowEditState {
   amount: string;
   date: string;
@@ -64,6 +99,8 @@ export default function StaffAssignmentsClient({
   const isSelf = staff.id === user?.staffId;
 
   const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
+  const [orderQuery, setOrderQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
 
   // Owner-only inline editing. Keyed by orderId since that's what the edit
   // endpoint is keyed on. Only one row can be edited at a time.
@@ -84,10 +121,22 @@ export default function StaffAssignmentsClient({
 
   // All hooks must run unconditionally before any early return below.
   const filtered = useMemo(
-    () => (staff.assignments || []).filter((a) => withinRange(a.date, range)),
-    [staff.assignments, range]
+    () =>
+      sortAssignments(
+        (staff.assignments || []).filter((a) => withinRange(a.date, range) && matchesOrderQuery(a, orderQuery)),
+        sortOrder
+      ),
+    [staff.assignments, range, orderQuery, sortOrder]
   );
+  // Totals are always computed from the filtered list, so they follow the date range AND the order filter.
   const totals = summarizeAssignments(filtered);
+  const totalOrders = (staff.assignments || []).length;
+  const filtersActive = !!range || orderQuery.trim() !== "";
+
+  function clearFilters(): void {
+    setRange(null);
+    setOrderQuery("");
+  }
 
   // Staff can only view their own assignments; anyone else gets turned away.
   if (!isOwner && !isSelf) {
@@ -156,6 +205,17 @@ export default function StaffAssignmentsClient({
       <Card className="bg-content1">
         <CardBody className="p-5 space-y-4">
           <div className="flex items-end gap-3 flex-wrap">
+            <Input
+              label="Filter by order"
+              placeholder="Order no., program or customer"
+              variant="bordered"
+              value={orderQuery}
+              onValueChange={setOrderQuery}
+              isClearable
+              onClear={() => setOrderQuery("")}
+              startContent={<Search size={16} className="text-foreground/50" />}
+              className="max-w-xs"
+            />
             <DateRangePicker
               label="Filter by date range"
               variant="bordered"
@@ -164,9 +224,23 @@ export default function StaffAssignmentsClient({
               maxValue={today(getLocalTimeZone())}
               className="max-w-xs"
             />
-            {range && (
-              <Button size="sm" variant="light" onPress={() => setRange(null)}>
-                Clear filter
+            <Select
+              label="Sort by date"
+              variant="bordered"
+              selectedKeys={[sortOrder]}
+              onSelectionChange={(keys) => {
+                const next = Array.from(keys)[0] as SortOrder | undefined;
+                if (next) setSortOrder(next);
+              }}
+              disallowEmptySelection
+              className="max-w-[220px]"
+            >
+              <SelectItem key="newest">Newest first (present → past)</SelectItem>
+              <SelectItem key="oldest">Oldest first (past → present)</SelectItem>
+            </Select>
+            {filtersActive && (
+              <Button size="sm" variant="light" onPress={clearFilters}>
+                Clear filters
               </Button>
             )}
           </div>
@@ -342,14 +416,16 @@ export default function StaffAssignmentsClient({
             </div>
           ) : (
             <p className="text-sm text-foreground/60 py-6 text-center">
-              {staff.assignments?.length ? "No assignments in this date range." : "No assignments yet."}
+              {totalOrders ? "No assignments match the current filters." : "No assignments yet."}
             </p>
           )}
 
           {filtered.length > 0 && isOwner && (
             <div className="flex flex-wrap items-center justify-between gap-2 bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
               <span className="font-semibold" style={{ fontFamily: "var(--font-mono)" }}>
-                {range ? "Total (in range)" : "Total"}
+                {filtersActive
+                  ? `Total (${filtered.length} of ${totalOrders} order${totalOrders === 1 ? "" : "s"})`
+                  : `Total (${filtered.length} order${filtered.length === 1 ? "" : "s"})`}
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 <Chip color="warning" variant="flat" className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>

@@ -11,8 +11,9 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` refreshes keep the page mounted (no spinner), so an open borrows modal survives a save.
+  const load = useCallback(async (silent: boolean = false) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const res = await apiFetch("/api/staff");
@@ -41,5 +42,5 @@ export default function StaffPage() {
     return <p className="text-center text-danger py-24">{error}</p>;
   }
 
-  return <StaffClient staff={staff} onAdded={load} />;
+  return <StaffClient staff={staff} onAdded={() => load()} onRefresh={() => load(true)} />;
 }

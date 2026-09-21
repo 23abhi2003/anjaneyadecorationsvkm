@@ -18,7 +18,8 @@ import {
 import type { StaffMember } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import { inr, summarizeAssignments } from "@/lib/staffPay";
+import { inr, staffBalance, summarizeAssignments } from "@/lib/staffPay";
+import StaffBorrowsPanel from "@/components/StaffBorrowsPanel";
 
 interface StaffFormState {
   name: string;
@@ -28,7 +29,16 @@ interface StaffFormState {
 
 const emptyStaffForm: StaffFormState = { name: "", phone: "", pin: "" };
 
-export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; onAdded?: () => void }) {
+export default function StaffClient({
+  staff,
+  onAdded,
+  onRefresh,
+}: {
+  staff: StaffMember[];
+  onAdded?: () => void;
+  /** Re-fetch staff WITHOUT unmounting this page, so an open modal survives (falls back to onAdded). */
+  onRefresh?: () => void;
+}) {
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
 
@@ -51,6 +61,11 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const { isOpen: editOpen, onOpen: openEdit, onOpenChange: onEditOpenChange } = useDisclosure();
+
+  // Which staff member's borrows modal is open (by id). Looked up from `staff` on every
+  // render, so after adding/deleting a borrow the modal shows the refreshed record.
+  const [borrowStaffId, setBorrowStaffId] = useState<string | null>(null);
+  const borrowStaff = staff.find((m) => m.id === borrowStaffId) ?? null;
 
   function openStaff(member: StaffMember): void {
     setSelected(member);
@@ -133,6 +148,7 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
       <div className="grid sm:grid-cols-2 gap-4">
         {visibleStaff.map((s) => {
           const pay = summarizeAssignments(s.assignments || []);
+          const bal = staffBalance(s.assignments, s.borrows);
           const totalEvents = (s.assignments || []).length;
           const canManage = isOwner || s.id === user?.staffId;
           return (
@@ -160,10 +176,20 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
                     </Chip>
                   </div>
                 )}
+                {isOwner && bal.borrowed > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <Chip size="sm" color="warning" variant="flat">
+                      Borrowed {inr(bal.borrowed)}
+                    </Chip>
+                    <Chip size="sm" color={bal.remaining < 0 ? "danger" : "primary"} variant="flat">
+                      Remaining {inr(bal.remaining)}
+                    </Chip>
+                  </div>
+                )}
                 <p className="text-xs text-foreground/50 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
                   {totalEvents} event{totalEvents === 1 ? "" : "s"} assigned &middot; {s.phone || "no phone on file"}
                 </p>
-                <div className="flex gap-2 mt-3">
+                <div className="flex flex-wrap gap-2 mt-3">
                   <Button
                     as={Link}
                     href={`/staff/assignments?id=${encodeURIComponent(s.id)}`}
@@ -173,6 +199,11 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
                   >
                     View assignments
                   </Button>
+                  {canManage && (
+                    <Button size="sm" variant="flat" color="warning" radius="sm" onPress={() => setBorrowStaffId(s.id)}>
+                      Borrows
+                    </Button>
+                  )}
                   {canManage && (
                     <Button size="sm" variant="bordered" radius="sm" onPress={() => openEditModal(s)}>
                       Edit
@@ -194,6 +225,7 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
           {(onClose) => {
             if (!selected) return null;
             const pay = summarizeAssignments(selected.assignments || []);
+            const bal = staffBalance(selected.assignments, selected.borrows);
             const totalEvents = (selected.assignments || []).length;
             const canManage = isOwner || selected.id === user?.staffId;
             return (
@@ -221,6 +253,16 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
                       <p className="text-sm text-foreground/70">
                         <span className="text-foreground/50">Still due: </span>
                         <span className="text-danger font-semibold">{inr(pay.due)}</span>
+                      </p>
+                      <p className="text-sm text-foreground/70">
+                        <span className="text-foreground/50">Borrowed: </span>
+                        <span className="text-warning font-semibold">{inr(bal.borrowed)}</span>
+                      </p>
+                      <p className="text-sm text-foreground/70">
+                        <span className="text-foreground/50">Remaining after borrows: </span>
+                        <span className={`font-semibold ${bal.remaining < 0 ? "text-danger" : "text-success"}`}>
+                          {inr(bal.remaining)}
+                        </span>
                       </p>
                     </>
                   )}
@@ -256,6 +298,36 @@ export default function StaffClient({ staff, onAdded }: { staff: StaffMember[]; 
           }}
         </ModalContent>
       </Modal>
+
+      {/* Borrows modal — mounted only while open (same pattern as StaffPaymentsModal). */}
+      {borrowStaff && (
+        <Modal isOpen onOpenChange={(open) => !open && setBorrowStaffId(null)} size="lg" scrollBehavior="inside">
+          <ModalContent>
+            {(onClose) => (
+              <>
+                <ModalHeader className="flex flex-col gap-0.5" style={{ fontFamily: "var(--font-display)" }}>
+                  <span>{borrowStaff.name} — borrows</span>
+                  <span className="text-xs font-normal text-foreground/50">
+                    Subtracted from the total of all their assigned orders
+                  </span>
+                </ModalHeader>
+                <ModalBody className="pb-4">
+                  <StaffBorrowsPanel
+                    staff={borrowStaff}
+                    isOwner={isOwner}
+                    onChanged={() => (onRefresh ?? onAdded)?.()}
+                  />
+                </ModalBody>
+                <ModalFooter>
+                  <Button variant="bordered" radius="sm" onPress={onClose}>
+                    Close
+                  </Button>
+                </ModalFooter>
+              </>
+            )}
+          </ModalContent>
+        </Modal>
+      )}
 
       {/* Edit staff profile modal */}
       <Modal isOpen={editOpen} onOpenChange={onEditOpenChange} size="md">

@@ -1,4 +1,4 @@
-import type { StaffPayment, StaffPaymentStatus } from "@/lib/types";
+import type { StaffBorrow, StaffPayment, StaffPaymentStatus } from "@/lib/types";
 
 /**
  * Staff payout maths, shared by the Staff cards, the assignments page and the
@@ -53,9 +53,36 @@ export function summarizeAssignments(
   );
 }
 
-/** ₹12,500 style (Indian digit grouping). */
+export function sumBorrows(borrows?: StaffBorrow[]): number {
+  return (borrows ?? []).reduce((sum, b) => sum + parseAmt(b.amount), 0);
+}
+
+export interface StaffBalance {
+  /** Sum of the amounts of ALL orders assigned to the staff member. */
+  total: number;
+  /** Everything they borrowed. */
+  borrowed: number;
+  /** total - borrowed. Negative when they have borrowed more than they have earned so far. */
+  remaining: number;
+}
+
+/**
+ * Borrows are deducted from the total of ALL the staff member's assigned orders
+ * (never a date-filtered subset), so pass their full `assignments` list here.
+ */
+export function staffBalance(
+  assignments: Array<{ amount?: string; paymentStatus?: StaffPaymentStatus; payments?: StaffPayment[] }> | undefined,
+  borrows: StaffBorrow[] | undefined
+): StaffBalance {
+  const { total } = summarizeAssignments(assignments ?? []);
+  const borrowed = sumBorrows(borrows);
+  return { total, borrowed, remaining: Math.round((total - borrowed) * 100) / 100 };
+}
+
+/** ₹12,500 style (Indian digit grouping). Negatives read as -₹500. */
 export function inr(n: number): string {
-  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  const abs = Math.abs(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  return n < 0 ? `-₹${abs}` : `₹${abs}`;
 }
 
 /** Today's date as YYYY-MM-DD in the user's own time zone (not UTC). */

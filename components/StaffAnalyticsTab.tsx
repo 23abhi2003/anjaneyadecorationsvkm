@@ -6,13 +6,10 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Cell,
 } from "recharts";
 import type { StaffMember } from "@/lib/types";
 import { inr, parseAmt, staffBalance, summarizeAssignments } from "@/lib/staffPay";
@@ -23,7 +20,11 @@ function orderSeq(orderId: string): number {
   return m ? parseInt(m[1], 10) : 0;
 }
 
-export default function StaffAnalyticsTab({ staff }: { staff: StaffMember }) {
+export default function StaffAnalyticsTab({ staff }: { staff?: StaffMember | null }) {
+  if (!staff) {
+    return <p className="text-sm text-foreground/50 py-10 text-center">Loading staff analytics…</p>;
+  }
+
   const assignments = staff.assignments || [];
   const pay = summarizeAssignments(assignments);
   const bal = staffBalance(assignments, staff.borrows);
@@ -52,9 +53,9 @@ export default function StaffAnalyticsTab({ staff }: { staff: StaffMember }) {
   }, [assignments]);
 
   const moneyBars = [
-    { name: "Total earned", value: pay.total, color: "#D9A427" },
-    { name: "Borrowed", value: bal.borrowed, color: "#8B4A15" },
-    { name: "Remaining", value: bal.remaining, color: bal.remaining < 0 ? "#6E1F3A" : "#3F6B1F" },
+    { name: "Total earned", value: pay.total },
+    { name: "Borrowed", value: bal.borrowed },
+    { name: "Remaining", value: bal.remaining },
   ];
 
   return (
@@ -134,17 +135,25 @@ export default function StaffAnalyticsTab({ staff }: { staff: StaffMember }) {
             Total vs borrowed vs remaining
           </h3>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={moneyBars} margin={{ left: 4, right: 12, top: 8 }}>
+            <AreaChart data={moneyBars} margin={{ left: 4, right: 12, top: 8 }}>
+              <defs>
+                <linearGradient id="staffMoneyFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#D9A427" stopOpacity={0.7} />
+                  <stop offset="95%" stopColor="#D9A427" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#24112922" />
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip formatter={(v: number) => `₹${v.toLocaleString("en-IN")}`} />
-              <Bar dataKey="value" name="Amount" radius={[4, 4, 0, 0]}>
-                {moneyBars.map((b) => (
-                  <Cell key={b.name} fill={b.color} />
-                ))}
-              </Bar>
-            </BarChart>
+              <Area
+                type="monotone"
+                dataKey="value"
+                name="Amount"
+                stroke="#D9A427"
+                fill="url(#staffMoneyFill)"
+              />
+            </AreaChart>
           </ResponsiveContainer>
           {bal.remaining < 0 && (
             <p className="text-xs text-danger text-center mt-2">

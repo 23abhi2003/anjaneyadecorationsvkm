@@ -241,7 +241,7 @@ export default function StaffAssignmentsClient({
                 if (next) setSortOrder(next);
               }}
               disallowEmptySelection
-              className="max-w-[220px]"
+              className="max-w-55"
             >
               <SelectItem key="newest">Newest first (present → past)</SelectItem>
               <SelectItem key="oldest">Oldest first (past → present)</SelectItem>
@@ -256,7 +256,7 @@ export default function StaffAssignmentsClient({
           {filtered.length ? (
             viewMode === "list" ? (
             <div className="overflow-x-auto">
-              <Table aria-label={`${staff.name} assignments`} removeWrapper className="min-w-[640px]">
+              <Table aria-label={`${staff.name} assignments`} removeWrapper className="min-w-160">
                 <TableHeader>
                   <TableColumn>ORDER</TableColumn>
                   <TableColumn>CUSTOMER NAME</TableColumn>

@@ -709,7 +709,7 @@ export default function OrderWizard({
                 type="date"
                 label="Event date"
                 variant="bordered"
-                className="max-w-[220px]"
+                className="max-w-55"
                 value={form.eventDate}
                 onValueChange={(v) => setPath("eventDate", v)}
               />

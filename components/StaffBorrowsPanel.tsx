@@ -141,7 +141,7 @@ export default function StaffBorrowsPanel({
                     <span className="font-semibold">{inr(parseAmt(b.amount))}</span>
                     <span className="text-foreground/50"> &middot; {b.date}</span>
                   </p>
-                  <p className="text-xs text-foreground/60 break-words">{b.reason || "—"}</p>
+                  <p className="text-xs text-foreground/60 wrap-break-word">{b.reason || "—"}</p>
                 </div>
                 {isOwner && (
                   <Button

@@ -1,16 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Chip, Card, CardBody, Button } from "@heroui/react";
-import { LayoutGrid, List as ListIcon } from "lucide-react";
+import {
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+  Chip,
+  Card,
+  CardBody,
+  Button,
+  Input,
+  Select,
+  SelectItem,
+  DateRangePicker,
+} from "@heroui/react";
+import { LayoutGrid, List as ListIcon, Search } from "lucide-react";
+import type { DateValue } from "@react-types/datepicker";
+import type { RangeValue } from "@react-types/shared";
+import { getLocalTimeZone, today } from "@internationalized/date";
 import type { Order, OrderStatus } from "@/lib/types";
+import { PAYMENT_TYPES } from "@/lib/catalog";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
   confirmed: "success",
   completed: "secondary",
 };
+
+type PaymentFilter = "all" | "due" | "paid";
+
+const PAYMENT_TYPE_OPTIONS = [{ key: "all", label: "All types" }, ...PAYMENT_TYPES.map((t) => ({ key: t, label: t }))];
 
 function invoiceMoney(o: Order) {
   const total = parseFloat(o.invoice?.totalAmount || "0") || 0;
@@ -19,9 +42,90 @@ function invoiceMoney(o: Order) {
   return { total, advance, due };
 }
 
+/** Money a single order owes staff (sum of every staff member assigned to it). */
+function orderStaffAmount(o: Order): number {
+  return (o.staffAssigned || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+}
+
+function inr(n: number) {
+  return `₹${n.toLocaleString("en-IN")}`;
+}
+
+/** Parses an order/event date string (YYYY-MM-DD) into a comparable Date, tolerating blanks. */
+function toDate(d?: string | null): Date | null {
+  if (!d) return null;
+  const parsed = new Date(d + "T00:00:00");
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function withinRange(dateStr: string | null | undefined, range: RangeValue<DateValue> | null): boolean {
+  if (!range) return true;
+  const d = toDate(dateStr);
+  if (!d) return false;
+  const start = range.start.toDate(getLocalTimeZone());
+  const end = range.end.toDate(getLocalTimeZone());
+  end.setHours(23, 59, 59, 999);
+  return d >= start && d <= end;
+}
+
+/** True if the free-text search matches this order's customer name, order id, or invoice amount. */
+function matchesSearch(o: Order, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const { total } = invoiceMoney(o);
+  const haystacks = [o.customer?.name || "", o.id || "", String(total)];
+  return haystacks.some((h) => h.toLowerCase().includes(q));
+}
+
 export default function InvoicesTab({ orders }: { orders: Order[] }) {
   const [view, setView] = useState<"list" | "grid">("list");
-  const rows = [...orders].sort((a, b) => (a.eventDate || "").localeCompare(b.eventDate || ""));
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<"all" | string>("all");
+  const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
+
+  const filtersActive =
+    !!search || statusFilter !== "all" || paymentFilter !== "all" || paymentTypeFilter !== "all" || !!range;
+
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setPaymentFilter("all");
+    setPaymentTypeFilter("all");
+    setRange(null);
+  }
+
+  const rows = useMemo(() => {
+    return [...orders]
+      .filter((o) => matchesSearch(o, search))
+      .filter((o) => statusFilter === "all" || o.status === statusFilter)
+      .filter((o) => {
+        if (paymentFilter === "all") return true;
+        const { due } = invoiceMoney(o);
+        return paymentFilter === "due" ? due > 0 : due <= 0;
+      })
+      .filter((o) => paymentTypeFilter === "all" || (o.invoice?.paymentType || "") === paymentTypeFilter)
+      .filter((o) => withinRange(o.eventDate, range))
+      .sort((a, b) => (a.eventDate || "").localeCompare(b.eventDate || ""));
+  }, [orders, search, statusFilter, paymentFilter, paymentTypeFilter, range]);
+
+  /** Owner-facing totals across the currently filtered invoices: amount, dues, staff pay, and net profit. */
+  const summary = useMemo(() => {
+    return rows.reduce(
+      (acc, o) => {
+        const { total, due } = invoiceMoney(o);
+        const staffAmount = orderStaffAmount(o);
+        const investment = parseFloat(o.invoice?.investment || "0") || 0;
+        acc.total += total;
+        acc.due += due;
+        acc.staff += staffAmount;
+        acc.profit += total - staffAmount - investment;
+        return acc;
+      },
+      { total: 0, due: 0, staff: 0, profit: 0 }
+    );
+  }, [rows]);
 
   return (
     <div className="space-y-3">
@@ -57,9 +161,81 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
         </div>
       </div>
 
+      <div className="bg-content1 rounded-lg p-4 flex flex-wrap items-end gap-3">
+        <Input
+          label="Search"
+          placeholder="Customer name or amount"
+          variant="bordered"
+          value={search}
+          onValueChange={setSearch}
+          isClearable
+          onClear={() => setSearch("")}
+          startContent={<Search size={16} className="text-foreground/50" />}
+          className="max-w-xs"
+        />
+        <Select
+          label="Status"
+          variant="bordered"
+          selectedKeys={[statusFilter]}
+          onSelectionChange={(keys) => {
+            const next = Array.from(keys)[0] as "all" | OrderStatus | undefined;
+            if (next) setStatusFilter(next);
+          }}
+          disallowEmptySelection
+          className="max-w-45"
+        >
+          <SelectItem key="all">All statuses</SelectItem>
+          <SelectItem key="pending">Pending</SelectItem>
+          <SelectItem key="confirmed">Confirmed</SelectItem>
+          <SelectItem key="completed">Completed</SelectItem>
+        </Select>
+        <Select
+          label="Payment"
+          variant="bordered"
+          selectedKeys={[paymentFilter]}
+          onSelectionChange={(keys) => {
+            const next = Array.from(keys)[0] as PaymentFilter | undefined;
+            if (next) setPaymentFilter(next);
+          }}
+          disallowEmptySelection
+          className="max-w-40"
+        >
+          <SelectItem key="all">Due &amp; paid</SelectItem>
+          <SelectItem key="due">Due</SelectItem>
+          <SelectItem key="paid">Paid</SelectItem>
+        </Select>
+        <Select
+          label="Payment type"
+          variant="bordered"
+          items={PAYMENT_TYPE_OPTIONS}
+          selectedKeys={[paymentTypeFilter]}
+          onSelectionChange={(keys) => {
+            const next = Array.from(keys)[0] as string | undefined;
+            if (next) setPaymentTypeFilter(next);
+          }}
+          disallowEmptySelection
+          className="max-w-45"
+        >
+          {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
+        </Select>
+        <DateRangePicker
+          label="Event date range"
+          variant="bordered"
+          value={range}
+          onChange={setRange}
+          maxValue={today(getLocalTimeZone())}
+          className="max-w-xs"
+        />
+        {filtersActive && (
+          <Button size="sm" variant="light" onPress={clearFilters}>
+            Clear filters
+          </Button>
+        )}
+      </div>
+
       {view === "list" ? (
         <div className="bg-content1 rounded-lg p-2 overflow-x-auto">
-          <Table removeWrapper aria-label="Invoices" className="min-w-[720px]">
+          <Table removeWrapper aria-label="Invoices" className="min-w-180">
             <TableHeader>
               <TableColumn>ORDER</TableColumn>
               <TableColumn>CUSTOMER</TableColumn>
@@ -70,7 +246,7 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
               <TableColumn>PAYMENT</TableColumn>
               <TableColumn>STATUS</TableColumn>
             </TableHeader>
-            <TableBody emptyContent="No orders yet.">
+            <TableBody emptyContent="No invoices match these filters.">
               {rows.map((o) => {
                 const { total, advance, due } = invoiceMoney(o);
                 return (
@@ -98,7 +274,7 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
           </Table>
         </div>
       ) : rows.length === 0 ? (
-        <div className="bg-content1 rounded-lg py-16 text-center text-sm text-foreground/50">No orders yet.</div>
+        <div className="bg-content1 rounded-lg py-16 text-center text-sm text-foreground/50">No invoices match these filters.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((o) => {
@@ -152,6 +328,41 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
           })}
         </div>
       )}
+
+      <div className="grid sm:grid-cols-4 gap-4 pt-2">
+        <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+            Total amount
+          </p>
+          <p className="text-2xl text-secondary mt-1" style={{ fontFamily: "var(--font-display)" }}>
+            {inr(summary.total)}
+          </p>
+        </div>
+        <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+            Total dues
+          </p>
+          <p className={`text-2xl mt-1 ${summary.due > 0 ? "text-warning" : "text-foreground"}`} style={{ fontFamily: "var(--font-display)" }}>
+            {inr(summary.due)}
+          </p>
+        </div>
+        <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+            Total staff pay
+          </p>
+          <p className="text-2xl mt-1" style={{ fontFamily: "var(--font-display)", color: "#8B4A15" }}>
+            {inr(summary.staff)}
+          </p>
+        </div>
+        <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+            Total profit
+          </p>
+          <p className={`text-2xl mt-1 ${summary.profit < 0 ? "text-danger" : "text-success"}`} style={{ fontFamily: "var(--font-display)" }}>
+            {inr(summary.profit)}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

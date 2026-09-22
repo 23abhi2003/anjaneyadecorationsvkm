@@ -121,8 +121,8 @@ export default function StaffClient({
 
       {isOwner && (
         <div className="bg-content1 rounded-lg p-5 flex flex-wrap items-end gap-3">
-          <Input label="Name" variant="bordered" value={addForm.name} onValueChange={(v) => setAddForm({ ...addForm, name: v })} className="max-w-[200px]" />
-          <Input label="Phone number" variant="bordered" value={addForm.phone} onValueChange={(v) => setAddForm({ ...addForm, phone: v })} className="max-w-[200px]" />
+          <Input label="Name" variant="bordered" value={addForm.name} onValueChange={(v) => setAddForm({ ...addForm, name: v })} className="max-w-50" />
+          <Input label="Phone number" variant="bordered" value={addForm.phone} onValueChange={(v) => setAddForm({ ...addForm, phone: v })} className="max-w-50" />
           <Input
             label="4-digit PIN"
             variant="bordered"
@@ -130,7 +130,7 @@ export default function StaffClient({
             maxLength={4}
             value={addForm.pin}
             onValueChange={(v) => setAddForm({ ...addForm, pin: v.replace(/\D/g, "").slice(0, 4) })}
-            className="max-w-[160px]"
+            className="max-w-40"
           />
           <Button color="primary" radius="sm" onPress={addStaff} isLoading={saving} className="font-semibold">
             + Add staff

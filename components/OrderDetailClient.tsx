@@ -45,6 +45,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     totalAmount: order.invoice?.totalAmount || "",
     advancePaid: order.invoice?.advancePaid || "",
     paymentType: order.invoice?.paymentType || "",
+    investment: order.invoice?.investment || "",
   });
   const [notes, setNotes] = useState(order.notes || "");
   const [saving, setSaving] = useState(false);
@@ -59,6 +60,9 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   const total = parseFloat(invoice.totalAmount) || 0;
   const advance = parseFloat(invoice.advancePaid) || 0;
   const due = Math.max(total - advance, 0);
+  const investment = parseFloat(invoice.investment) || 0;
+  const staffTotal = (order.staffAssigned || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+  const profit = total - staffTotal - investment;
 
   // Mirrors the backend's computeOverallStatus() so the chip updates instantly, before save.
   const overallStatus: OrderStatus =
@@ -463,14 +467,35 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
                     value={invoice.advancePaid}
                     onValueChange={(v) => setInvoice({ ...invoice, advancePaid: v })}
                   />
+                  <Input
+                    label="Investment (₹) — flowers/drinks/food"
+                    type="number"
+                    variant="bordered"
+                    value={invoice.investment}
+                    onValueChange={(v) => setInvoice({ ...invoice, investment: v })}
+                    className="sm:col-span-2"
+                  />
                 </div>
-                <div className="mt-4 bg-primary/10 border border-primary/40 rounded-md px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
-                    Due amount
-                  </span>
-                  <span className="text-xl text-warning" style={{ fontFamily: "var(--font-display)" }}>
-                    ₹{due.toLocaleString("en-IN")}
-                  </span>
+                <div className="mt-4 grid sm:grid-cols-2 gap-3">
+                  <div className="bg-primary/10 border border-primary/40 rounded-md px-4 py-3 flex items-center justify-between">
+                    <span className="text-sm text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
+                      Due amount
+                    </span>
+                    <span className="text-xl text-warning" style={{ fontFamily: "var(--font-display)" }}>
+                      ₹{due.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="bg-success/10 border border-success/40 rounded-md px-4 py-3 flex items-center justify-between">
+                    <span className="text-sm text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
+                      Profit (order − staff − investment)
+                    </span>
+                    <span
+                      className={`text-xl ${profit < 0 ? "text-danger" : "text-success"}`}
+                      style={{ fontFamily: "var(--font-display)" }}
+                    >
+                      ₹{profit.toLocaleString("en-IN")}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-4 flex gap-2">
                   {PAYMENT_OPTIONS.map((t) => (

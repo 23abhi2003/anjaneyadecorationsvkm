@@ -126,6 +126,8 @@ export interface InvoiceInfo {
   advancePaid: string;
   dueAmount?: string;
   paymentType: string;
+  /** Owner-only. What was spent on the order (flowers, drinks, food, etc.), for profit tracking. */
+  investment?: string;
 }
 
 export interface LegacyItem {

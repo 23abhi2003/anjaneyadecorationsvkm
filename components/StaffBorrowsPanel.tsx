@@ -16,8 +16,8 @@ import { inr, parseAmt, staffBalance, todayLocalISO } from "@/lib/staffPay";
  * is computed from `staff.assignments` here rather than taken from the page's filter.
  *
  * Owner: sees the summary, the list, and can add / delete borrows.
- * Staff (own page): sees their own list read-only. The totals / remaining are left
- * out, matching the rest of the app where aggregated money is owner-only.
+ * Staff (own page): sees the same total/borrowed/remaining summary and the list,
+ * read-only — they just can't add or delete borrows.
  *
  * Presentational only (no Card/Modal wrapper) so it can sit in a page or a modal.
  * After any change it calls `onChanged` so the parent re-fetches the fresh staff record.
@@ -105,35 +105,28 @@ export default function StaffBorrowsPanel({
 
   return (
     <div className="space-y-4">
-      {isOwner ? (
-        <div className="space-y-2">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="bg-content2 rounded-md py-2 px-1">
-              <p className="text-xs text-foreground/50">Total of all orders</p>
-              <p className="font-semibold">{inr(balance.total)}</p>
-            </div>
-            <div className="bg-content2 rounded-md py-2 px-1">
-              <p className="text-xs text-foreground/50">Borrowed</p>
-              <p className="font-semibold text-warning">{inr(balance.borrowed)}</p>
-            </div>
-            <div className="bg-content2 rounded-md py-2 px-1">
-              <p className="text-xs text-foreground/50">Remaining</p>
-              <p className={`font-semibold ${overBorrowed ? "text-danger" : "text-success"}`}>{inr(balance.remaining)}</p>
-            </div>
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-content2 rounded-md py-2 px-1">
+            <p className="text-xs text-foreground/50">Total of all orders</p>
+            <p className="font-semibold">{inr(balance.total)}</p>
           </div>
-          <p className="text-xs text-foreground/40 text-center">Remaining = total of all orders − borrowed</p>
-          {overBorrowed && (
-            <p className="text-xs text-danger text-center">
-              Borrowed {inr(-balance.remaining)} more than the orders total so far.
-            </p>
-          )}
+          <div className="bg-content2 rounded-md py-2 px-1">
+            <p className="text-xs text-foreground/50">Borrowed</p>
+            <p className="font-semibold text-warning">{inr(balance.borrowed)}</p>
+          </div>
+          <div className="bg-content2 rounded-md py-2 px-1">
+            <p className="text-xs text-foreground/50">Remaining</p>
+            <p className={`font-semibold ${overBorrowed ? "text-danger" : "text-success"}`}>{inr(balance.remaining)}</p>
+          </div>
         </div>
-      ) : (
-        <p className="text-sm text-foreground/70">
-          <span className="text-foreground/50">Total borrowed: </span>
-          <span className="text-warning font-semibold">{inr(balance.borrowed)}</span>
-        </p>
-      )}
+        <p className="text-xs text-foreground/40 text-center">Remaining = total of all orders − borrowed</p>
+        {overBorrowed && (
+          <p className="text-xs text-danger text-center">
+            Borrowed {inr(-balance.remaining)} more than the orders total so far.
+          </p>
+        )}
+      </div>
 
       <div>
         <p className="text-sm font-semibold mb-2">Borrows recorded</p>

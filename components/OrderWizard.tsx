@@ -118,7 +118,7 @@ const emptyForm: WizardForm = {
     flowers: {},
   },
   staffAssigned: [],
-  invoice: { totalAmount: "", advancePaid: "", paymentType: "" },
+  invoice: { totalAmount: "", advancePaid: "", paymentType: "", investment: "" },
   notes: "",
 };
 
@@ -153,6 +153,7 @@ function orderToForm(order: Order): WizardForm {
       totalAmount: order.invoice?.totalAmount || "",
       advancePaid: order.invoice?.advancePaid || "",
       paymentType: order.invoice?.paymentType || "",
+      investment: order.invoice?.investment || "",
     },
     notes: order.notes || "",
   };
@@ -890,6 +891,14 @@ export default function OrderWizard({
                   value={form.invoice.advancePaid}
                   onValueChange={(v) => setPath("invoice.advancePaid", v)}
                 />
+                <Input
+                  type="number"
+                  label="Investment (₹) — flowers/drinks/food"
+                  variant="bordered"
+                  value={form.invoice.investment}
+                  onValueChange={(v) => setPath("invoice.investment", v)}
+                  className="sm:col-span-2"
+                />
               </div>
               <div className="bg-primary/10 border border-primary/40 rounded-md px-4 py-3 flex items-center justify-between">
                 <span className="text-sm text-foreground/70" style={{ fontFamily: "var(--font-mono)" }}>
@@ -1163,6 +1172,7 @@ function ReviewSummary({
             <span>
               Total ₹{form.invoice.totalAmount || 0} · Advance ₹{form.invoice.advancePaid || 0} · Payment{" "}
               {form.invoice.paymentType || "—"}
+              {form.invoice.investment ? ` · Investment ₹${form.invoice.investment}` : ""}
             </span>
             <span className="text-warning" style={{ fontFamily: "var(--font-display)" }}>
               Due ₹{dueAmount.toLocaleString("en-IN")}

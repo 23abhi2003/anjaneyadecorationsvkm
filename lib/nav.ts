@@ -1,10 +1,12 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, ClipboardList, Users, HardHat, PlusCircle } from "lucide-react";
+import { LayoutDashboard, ClipboardList, Users, HardHat, PlusCircle, Receipt, BarChart3 } from "lucide-react";
 
 export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** Only shown to owner-role logins (financial/reporting pages). */
+  ownerOnly?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -12,6 +14,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Orders", href: "/orders", icon: ClipboardList },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Staff", href: "/staff", icon: HardHat },
+   { label: "Invoices", href: "/invoices", icon: Receipt, ownerOnly: true },
+  { label: "Analytics", href: "/analytics", icon: BarChart3, ownerOnly: true },
 ];
 
 export const CREATE_ORDER_ITEM: NavItem = {

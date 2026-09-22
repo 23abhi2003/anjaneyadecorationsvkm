@@ -154,15 +154,15 @@ export default function StaffClient({
                       {s.name}
                     </h3>
                   </button>
-                  {isOwner && (
+                  {canManage && (
                     <Chip color="warning" variant="flat">
                       {inr(pay.total)}
                     </Chip>
                   )}
                 </div>
-                {isOwner && bal.borrowed > 0 && (
+                {canManage && bal.borrowed > 0 && (
                   <p className="text-sm mt-1">
-                    <span className="text-foreground/50">Remaining: </span>
+                    <span className="text-foreground/50">Remaining (after borrows): </span>
                     <span className={`font-semibold ${bal.remaining < 0 ? "text-danger" : "text-primary"}`}>
                       {inr(bal.remaining)}
                     </span>
@@ -217,20 +217,24 @@ export default function StaffClient({
                     <span className="text-foreground/50">Events assigned: </span>
                     {totalEvents}
                   </p>
-                  {isOwner && (
+                  {canManage && (
                     <>
                       <p className="text-sm text-foreground/70">
                         <span className="text-foreground/50">Total earnings: </span>
                         <span className="text-warning font-semibold">{inr(pay.total)}</span>
                       </p>
-                      <p className="text-sm text-foreground/70">
-                        <span className="text-foreground/50">Paid (incl. advances): </span>
-                        <span className="text-success font-semibold">{inr(pay.paid)}</span>
-                      </p>
-                      <p className="text-sm text-foreground/70">
-                        <span className="text-foreground/50">Still due: </span>
-                        <span className="text-danger font-semibold">{inr(pay.due)}</span>
-                      </p>
+                      {isOwner && (
+                        <p className="text-sm text-foreground/70">
+                          <span className="text-foreground/50">Paid (incl. advances): </span>
+                          <span className="text-success font-semibold">{inr(pay.paid)}</span>
+                        </p>
+                      )}
+                      {isOwner && (
+                        <p className="text-sm text-foreground/70">
+                          <span className="text-foreground/50">Still due: </span>
+                          <span className="text-danger font-semibold">{inr(pay.due)}</span>
+                        </p>
+                      )}
                       <p className="text-sm text-foreground/70">
                         <span className="text-foreground/50">Borrowed: </span>
                         <span className="text-warning font-semibold">{inr(bal.borrowed)}</span>

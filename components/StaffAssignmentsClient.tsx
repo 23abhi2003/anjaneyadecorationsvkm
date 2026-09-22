@@ -574,7 +574,7 @@ export default function StaffAssignmentsClient({
             </p>
           )}
 
-          {filtered.length > 0 && isOwner && (
+          {filtered.length > 0 && (isOwner || isSelf) && (
             <div className="flex flex-wrap items-center justify-between gap-2 bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
               <span className="font-semibold" style={{ fontFamily: "var(--font-mono)" }}>
                 {filtersActive

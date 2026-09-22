@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Card, CardBody, DateRangePicker } from "@heroui/react";
+import { Card, CardBody, DateRangePicker, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import type { DateValue } from "@react-types/datepicker";
 import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
@@ -11,6 +11,8 @@ import {
   Line,
   BarChart,
   Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -21,6 +23,7 @@ import {
   Cell,
 } from "recharts";
 import type { Order, StaffMember } from "@/lib/types";
+import { staffBalance, summarizeAssignments, inr } from "@/lib/staffPay";
 
 const PIE_COLORS = ["#D9A427", "#5B2674", "#3F6B1F", "#8B4A15", "#6E1F3A"];
 
@@ -90,9 +93,74 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
       .sort((a, b) => b.total - a.total);
   }, [staff, filtered]);
 
+  /** Order label used on the profit chart's X-axis: short id + customer name. */
+  function orderLabel(o: Order): string {
+    return o.id.replace(/^ADVKM-/, "#");
+  }
+
+  const profitByOrder = useMemo(() => {
+    return filtered
+      .map((o) => {
+        const orderAmount = parseFloat(o.invoice?.totalAmount || "0") || 0;
+        const staffAmount = (o.staffAssigned || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+        const investment = parseFloat(o.invoice?.investment || "0") || 0;
+        const profit = orderAmount - staffAmount - investment;
+        return {
+          name: orderLabel(o),
+          customer: o.customer?.name?.trim() || "",
+          orderAmount,
+          staffAmount,
+          investment,
+          profit,
+          date: orderDate(o),
+        };
+      })
+      .filter((r) => r.orderAmount > 0)
+      .sort((a, b) => {
+        const da = toDate(a.date)?.getTime() ?? 0;
+        const db = toDate(b.date)?.getTime() ?? 0;
+        return da - db;
+      });
+  }, [filtered]);
+
+  const totalProfit = profitByOrder.reduce((sum, r) => sum + r.profit, 0);
+
+  const profitSplit = useMemo(() => {
+    const totalStaff = profitByOrder.reduce((sum, r) => sum + r.staffAmount, 0);
+    const totalInvestment = profitByOrder.reduce((sum, r) => sum + r.investment, 0);
+    return [
+      { name: "Staff", value: totalStaff },
+      { name: "Investment", value: totalInvestment },
+      { name: "Profit", value: Math.max(totalProfit, 0) },
+    ].filter((r) => r.value > 0);
+  }, [profitByOrder, totalProfit]);
+
+  const SPLIT_COLORS: Record<string, string> = { Staff: "#8B4A15", Investment: "#D9A427", Profit: "#3F6B1F" };
+
   const totalRevenue = filtered.reduce((sum, o) => sum + (parseFloat(o.invoice?.totalAmount || "0") || 0), 0);
   const totalCollected = filtered.reduce((sum, o) => sum + (parseFloat(o.invoice?.advancePaid || "0") || 0), 0);
   const totalDue = Math.max(totalRevenue - totalCollected, 0);
+  const totalOrderCount = filtered.length;
+
+  /** Per-staff money overview: orders assigned, total earned, borrowed, and what's left after
+   * borrows. Always all-time (not date-filtered), matching the Staff page and borrows panel. */
+  const staffOverview = useMemo(() => {
+    return staff
+      .map((s) => {
+        const pay = summarizeAssignments(s.assignments || []);
+        const bal = staffBalance(s.assignments, s.borrows);
+        return {
+          id: s.id,
+          name: s.name,
+          orders: (s.assignments || []).length,
+          total: pay.total,
+          borrowed: bal.borrowed,
+          remaining: bal.remaining,
+        };
+      })
+      .filter((s) => s.orders > 0 || s.borrowed > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [staff]);
 
   return (
     <div className="space-y-6">
@@ -112,7 +180,15 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
         )}
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-4 gap-4">
+        <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+            Total orders
+          </p>
+          <p className="text-2xl text-foreground mt-1" style={{ fontFamily: "var(--font-display)" }}>
+            {totalOrderCount.toLocaleString("en-IN")}
+          </p>
+        </div>
         <div className="bg-content1 rounded-lg p-5 shadow-lg">
           <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
             Total invoiced
@@ -207,6 +283,127 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
           </CardBody>
         </Card>
       </div>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        <Card className="bg-content1 lg:col-span-2">
+          <CardBody className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                Profit by order
+              </h3>
+              <span className="text-sm text-foreground/60" style={{ fontFamily: "var(--font-mono)" }}>
+                Total profit: <span className={totalProfit < 0 ? "text-danger" : "text-success"}>₹{totalProfit.toLocaleString("en-IN")}</span>
+              </span>
+            </div>
+            {profitByOrder.length === 0 ? (
+              <p className="text-sm text-foreground/50 py-10 text-center">No invoiced orders in this range.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={profitByOrder} margin={{ left: 4, right: 12, top: 8 }}>
+                  <defs>
+                    <linearGradient id="profitFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3F6B1F" stopOpacity={0.7} />
+                      <stop offset="95%" stopColor="#3F6B1F" stopOpacity={0.05} />
+                    </linearGradient>
+                    <linearGradient id="staffFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8B4A15" stopOpacity={0.7} />
+                      <stop offset="95%" stopColor="#8B4A15" stopOpacity={0.05} />
+                    </linearGradient>
+                    <linearGradient id="investmentFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#D9A427" stopOpacity={0.7} />
+                      <stop offset="95%" stopColor="#D9A427" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#24112922" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip
+                    formatter={(value: number, key: string) => [
+                      `₹${value.toLocaleString("en-IN")}`,
+                      key === "staffAmount" ? "Staff" : key === "investment" ? "Investment" : key === "profit" ? "Profit" : key,
+                    ]}
+                    labelFormatter={(label: string, payload) => {
+                      const row = payload?.[0]?.payload as { customer: string; orderAmount: number } | undefined;
+                      return row ? `${label}${row.customer ? " · " + row.customer : ""} — Order ₹${row.orderAmount.toLocaleString("en-IN")}` : label;
+                    }}
+                  />
+                  <Legend
+                    formatter={(v: string) => (v === "staffAmount" ? "Staff" : v === "investment" ? "Investment (flowers/drinks/food)" : "Profit")}
+                  />
+                  <Area type="monotone" dataKey="staffAmount" name="staffAmount" stackId="1" stroke="#8B4A15" fill="url(#staffFill)" />
+                  <Area type="monotone" dataKey="investment" name="investment" stackId="1" stroke="#D9A427" fill="url(#investmentFill)" />
+                  <Area type="monotone" dataKey="profit" name="profit" stackId="1" stroke="#3F6B1F" fill="url(#profitFill)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card className="bg-content1">
+          <CardBody className="p-5">
+            <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: "var(--font-display)" }}>
+              Staff vs investment vs profit
+            </h3>
+            {profitSplit.length === 0 ? (
+              <p className="text-sm text-foreground/50 py-10 text-center">No invoiced orders in this range.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie data={profitSplit} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                    {profitSplit.map((entry) => (
+                      <Cell key={entry.name} fill={SPLIT_COLORS[entry.name]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => `₹${v.toLocaleString("en-IN")}`} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      <Card className="bg-content1">
+        <CardBody className="p-5">
+          <div className="mb-1">
+            <h3 className="text-lg font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+              Staff overview
+            </h3>
+            <p className="text-xs text-foreground/50">
+              All-time per staff member — orders assigned, total earned, borrowed, and what&apos;s left after borrows
+              (not affected by the date filter above).
+            </p>
+          </div>
+          {staffOverview.length === 0 ? (
+            <p className="text-sm text-foreground/50 py-10 text-center">No staff activity yet.</p>
+          ) : (
+            <div className="overflow-x-auto mt-3">
+              <Table removeWrapper aria-label="Staff overview" className="min-w-[560px]">
+                <TableHeader>
+                  <TableColumn>STAFF</TableColumn>
+                  <TableColumn>ORDERS</TableColumn>
+                  <TableColumn>TOTAL AMOUNT</TableColumn>
+                  <TableColumn>BORROWED</TableColumn>
+                  <TableColumn>REMAINING</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {staffOverview.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-semibold">{s.name}</TableCell>
+                      <TableCell>{s.orders}</TableCell>
+                      <TableCell className="text-secondary font-semibold">{inr(s.total)}</TableCell>
+                      <TableCell className="text-warning font-semibold">{inr(s.borrowed)}</TableCell>
+                      <TableCell className={`font-semibold ${s.remaining < 0 ? "text-danger" : "text-success"}`}>
+                        {inr(s.remaining)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
     </div>
   );
 }

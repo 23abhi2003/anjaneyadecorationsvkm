@@ -2,19 +2,29 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Button, Card, CardBody, Checkbox, Chip, Spinner, Tabs, Tab } from "@heroui/react";
+import { Button, Card, CardBody, Checkbox, Chip, Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import InvoicesTab from "@/components/InvoicesTab";
-import AnalyticsTab from "@/components/AnalyticsTab";
 import { generateCombinedOrdersPdf } from "@/lib/pdf";
-import type { Order, OrderStatus, StaffMember } from "@/lib/types";
+import type { Order, OrderStatus } from "@/lib/types";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
   confirmed: "success",
   completed: "secondary",
 };
+
+function orderTotal(o: Order): number {
+  return parseFloat(o.invoice?.totalAmount || "0") || 0;
+}
+
+function orderAdvance(o: Order): number {
+  return parseFloat(o.invoice?.advancePaid || "0") || 0;
+}
+
+function orderDue(o: Order): number {
+  return Math.max(orderTotal(o) - orderAdvance(o), 0);
+}
 
 function OrdersList({
   orders,
@@ -65,6 +75,19 @@ function OrdersList({
                   {o.eventDate || "no date"}
                 </span>
               </div>
+              <div className="flex items-center gap-2 mt-3">
+                <Chip size="sm" variant="flat" color="primary" className="text-[10px]">
+                  Total ₹{orderTotal(o).toLocaleString("en-IN")}
+                </Chip>
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  color={orderDue(o) > 0 ? "danger" : "success"}
+                  className="text-[10px]"
+                >
+                  {orderDue(o) > 0 ? `Remaining ₹${orderDue(o).toLocaleString("en-IN")}` : "Fully paid"}
+                </Chip>
+              </div>
             </CardBody>
           </Link>
         </Card>
@@ -78,7 +101,6 @@ export default function OrdersPage() {
   const isOwner = user?.role === "owner";
 
   const [orders, setOrders] = useState<Order[]>([]);
-  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -86,21 +108,13 @@ export default function OrdersPage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      apiFetch("/api/orders").then((res) => {
+    apiFetch("/api/orders")
+      .then((res) => {
         if (!res.ok) throw new Error("failed");
         return res.json() as Promise<Order[]>;
-      }),
-      isOwner
-        ? apiFetch("/api/staff")
-            .then((res) => (res.ok ? (res.json() as Promise<StaffMember[]>) : Promise.resolve([])))
-            .catch(() => [] as StaffMember[])
-        : Promise.resolve([] as StaffMember[]),
-    ])
-      .then(([ordersData, staffData]) => {
-        if (cancelled) return;
-        setOrders(ordersData);
-        setStaff(staffData);
+      })
+      .then((ordersData) => {
+        if (!cancelled) setOrders(ordersData);
       })
       .catch(() => {
         if (!cancelled) setError("Could not load orders. Is the API reachable?");
@@ -111,7 +125,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [isOwner]);
+  }, []);
 
   const selectedOrders = useMemo(() => orders.filter((o) => selectedIds.has(o.id)), [orders, selectedIds]);
 
@@ -177,25 +191,7 @@ export default function OrdersPage() {
       {!loading && error && <p className="text-center text-danger py-10">{error}</p>}
 
       {!loading && !error && (
-        <Tabs
-          aria-label="Orders view"
-          radius="sm"
-          classNames={{ tabList: "bg-content1", panel: "pt-6" }}
-        >
-          <Tab key="orders" title="Orders">
-            <OrdersList orders={orders} selectable selected={selectedIds} onToggle={toggleSelected} />
-          </Tab>
-          {isOwner && (
-            <Tab key="invoices" title="Invoices">
-              <InvoicesTab orders={orders} />
-            </Tab>
-          )}
-          {isOwner && (
-            <Tab key="analytics" title="Analytics">
-              <AnalyticsTab orders={orders} staff={staff} />
-            </Tab>
-          )}
-        </Tabs>
+        <OrdersList orders={orders} selectable selected={selectedIds} onToggle={toggleSelected} />
       )}
     </div>
   );

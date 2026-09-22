@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Button, Tooltip } from "@heroui/react";
 import { NAV_ITEMS, CREATE_ORDER_ITEM } from "@/lib/nav";
+import { useAuth } from "@/lib/Auth";
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -21,6 +22,9 @@ export default function Sidebar({
   showBrand?: boolean;
 }) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
+  const items = NAV_ITEMS.filter((item) => !item.ownerOnly || isOwner);
 
   return (
     <div className="flex h-full flex-col bg-[#F8F4E6]">
@@ -43,7 +47,7 @@ export default function Sidebar({
       )}
 
       <nav className={`flex-1 overflow-y-auto py-5 space-y-1 ${collapsed ? "px-2" : "px-3"}`}>
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = isActive(pathname ?? "", item.href);
           const Icon = item.icon;
 

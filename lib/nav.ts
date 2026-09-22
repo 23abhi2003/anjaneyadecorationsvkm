@@ -12,10 +12,10 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Orders", href: "/orders", icon: ClipboardList },
+  { label: "Invoices", href: "/invoices", icon: Receipt, ownerOnly: true },
+  { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Staff", href: "/staff", icon: HardHat },
-   { label: "Invoices", href: "/invoices", icon: Receipt, ownerOnly: true },
-  { label: "Analytics", href: "/analytics", icon: BarChart3, ownerOnly: true },
 ];
 
 export const CREATE_ORDER_ITEM: NavItem = {

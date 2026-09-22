@@ -19,7 +19,6 @@ import type { StaffMember } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { inr, staffBalance, summarizeAssignments } from "@/lib/staffPay";
-import StaffBorrowsPanel from "@/components/StaffBorrowsPanel";
 
 interface StaffFormState {
   name: string;
@@ -61,11 +60,6 @@ export default function StaffClient({
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const { isOpen: editOpen, onOpen: openEdit, onOpenChange: onEditOpenChange } = useDisclosure();
-
-  // Which staff member's borrows modal is open (by id). Looked up from `staff` on every
-  // render, so after adding/deleting a borrow the modal shows the refreshed record.
-  const [borrowStaffId, setBorrowStaffId] = useState<string | null>(null);
-  const borrowStaff = staff.find((m) => m.id === borrowStaffId) ?? null;
 
   function openStaff(member: StaffMember): void {
     setSelected(member);
@@ -166,25 +160,13 @@ export default function StaffClient({
                     </Chip>
                   )}
                 </div>
-                {isOwner && pay.total > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <Chip size="sm" color="success" variant="flat">
-                      Paid {inr(pay.paid)}
-                    </Chip>
-                    <Chip size="sm" color={pay.due > 0 ? "danger" : "default"} variant="flat">
-                      Due {inr(pay.due)}
-                    </Chip>
-                  </div>
-                )}
                 {isOwner && bal.borrowed > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <Chip size="sm" color="warning" variant="flat">
-                      Borrowed {inr(bal.borrowed)}
-                    </Chip>
-                    <Chip size="sm" color={bal.remaining < 0 ? "danger" : "primary"} variant="flat">
-                      Remaining {inr(bal.remaining)}
-                    </Chip>
-                  </div>
+                  <p className="text-sm mt-1">
+                    <span className="text-foreground/50">Remaining: </span>
+                    <span className={`font-semibold ${bal.remaining < 0 ? "text-danger" : "text-primary"}`}>
+                      {inr(bal.remaining)}
+                    </span>
+                  </p>
                 )}
                 <p className="text-xs text-foreground/50 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
                   {totalEvents} event{totalEvents === 1 ? "" : "s"} assigned &middot; {s.phone || "no phone on file"}
@@ -199,11 +181,6 @@ export default function StaffClient({
                   >
                     View assignments
                   </Button>
-                  {canManage && (
-                    <Button size="sm" variant="flat" color="warning" radius="sm" onPress={() => setBorrowStaffId(s.id)}>
-                      Borrows
-                    </Button>
-                  )}
                   {canManage && (
                     <Button size="sm" variant="bordered" radius="sm" onPress={() => openEditModal(s)}>
                       Edit
@@ -298,36 +275,6 @@ export default function StaffClient({
           }}
         </ModalContent>
       </Modal>
-
-      {/* Borrows modal — mounted only while open (same pattern as StaffPaymentsModal). */}
-      {borrowStaff && (
-        <Modal isOpen onOpenChange={(open) => !open && setBorrowStaffId(null)} size="lg" scrollBehavior="inside">
-          <ModalContent>
-            {(onClose) => (
-              <>
-                <ModalHeader className="flex flex-col gap-0.5" style={{ fontFamily: "var(--font-display)" }}>
-                  <span>{borrowStaff.name} — borrows</span>
-                  <span className="text-xs font-normal text-foreground/50">
-                    Subtracted from the total of all their assigned orders
-                  </span>
-                </ModalHeader>
-                <ModalBody className="pb-4">
-                  <StaffBorrowsPanel
-                    staff={borrowStaff}
-                    isOwner={isOwner}
-                    onChanged={() => (onRefresh ?? onAdded)?.()}
-                  />
-                </ModalBody>
-                <ModalFooter>
-                  <Button variant="bordered" radius="sm" onPress={onClose}>
-                    Close
-                  </Button>
-                </ModalFooter>
-              </>
-            )}
-          </ModalContent>
-        </Modal>
-      )}
 
       {/* Edit staff profile modal */}
       <Modal isOpen={editOpen} onOpenChange={onEditOpenChange} size="md">

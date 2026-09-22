@@ -9,6 +9,8 @@ import {
   Chip,
   DateRangePicker,
   Input,
+  Select,
+  SelectItem,
   Table,
   TableHeader,
   TableColumn,
@@ -16,14 +18,21 @@ import {
   TableRow,
   TableCell,
 } from "@heroui/react";
-import { Pencil, Check, X, ArrowLeft, Wallet } from "lucide-react";
+import { Pencil, Check, X, ArrowLeft, Wallet, Search, LayoutGrid, List as ListIcon } from "lucide-react";
 import type { DateValue } from "@react-types/datepicker";
 import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
 import type { StaffAssignmentRecord, StaffMember, StaffPaymentStatus } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import { assignmentMoney, inr, summarizeAssignments } from "@/lib/staffPay";
+import {
+  assignmentMoney,
+  inr,
+  matchesOrderQuery,
+  sortAssignmentsByDate,
+  summarizeAssignments,
+  type AssignmentSort,
+} from "@/lib/staffPay";
 import StaffPaymentsModal from "@/components/StaffPaymentsModal";
 import StaffBorrowsPanel from "@/components/StaffBorrowsPanel";
 
@@ -65,6 +74,9 @@ export default function StaffAssignmentsClient({
   const isSelf = staff.id === user?.staffId;
 
   const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
+  const [orderQuery, setOrderQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<AssignmentSort>("newest");
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   // Owner-only inline editing. Keyed by orderId since that's what the edit
   // endpoint is keyed on. Only one row can be edited at a time.
@@ -85,10 +97,22 @@ export default function StaffAssignmentsClient({
 
   // All hooks must run unconditionally before any early return below.
   const filtered = useMemo(
-    () => (staff.assignments || []).filter((a) => withinRange(a.date, range)),
-    [staff.assignments, range]
+    () =>
+      sortAssignmentsByDate(
+        (staff.assignments || []).filter((a) => withinRange(a.date, range) && matchesOrderQuery(a, orderQuery)),
+        sortOrder
+      ),
+    [staff.assignments, range, orderQuery, sortOrder]
   );
+  // Total always reflects everything active above: the order filter AND the date range.
   const totals = summarizeAssignments(filtered);
+  const totalOrders = (staff.assignments || []).length;
+  const filtersActive = !!range || orderQuery.trim() !== "";
+
+  function clearFilters(): void {
+    setRange(null);
+    setOrderQuery("");
+  }
 
   // Staff can only view their own assignments; anyone else gets turned away.
   if (!isOwner && !isSelf) {
@@ -156,7 +180,50 @@ export default function StaffAssignmentsClient({
 
       <Card className="bg-content1">
         <CardBody className="p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+              Assignments
+            </h2>
+            <div className="flex items-center gap-1 bg-content2 rounded-md p-1">
+              <Button
+                isIconOnly
+                size="sm"
+                radius="sm"
+                variant={viewMode === "list" ? "solid" : "light"}
+                color={viewMode === "list" ? "primary" : "default"}
+                onPress={() => setViewMode("list")}
+                aria-label="List view"
+                title="List view"
+              >
+                <ListIcon size={16} />
+              </Button>
+              <Button
+                isIconOnly
+                size="sm"
+                radius="sm"
+                variant={viewMode === "grid" ? "solid" : "light"}
+                color={viewMode === "grid" ? "primary" : "default"}
+                onPress={() => setViewMode("grid")}
+                aria-label="Grid view"
+                title="Grid view"
+              >
+                <LayoutGrid size={16} />
+              </Button>
+            </div>
+          </div>
+
           <div className="flex items-end gap-3 flex-wrap">
+            <Input
+              label="Filter by order"
+              placeholder="Order no., program or customer"
+              variant="bordered"
+              value={orderQuery}
+              onValueChange={setOrderQuery}
+              isClearable
+              onClear={() => setOrderQuery("")}
+              startContent={<Search size={16} className="text-foreground/50" />}
+              className="max-w-xs"
+            />
             <DateRangePicker
               label="Filter by date range"
               variant="bordered"
@@ -165,14 +232,29 @@ export default function StaffAssignmentsClient({
               maxValue={today(getLocalTimeZone())}
               className="max-w-xs"
             />
-            {range && (
-              <Button size="sm" variant="light" onPress={() => setRange(null)}>
-                Clear filter
+            <Select
+              label="Sort by date"
+              variant="bordered"
+              selectedKeys={[sortOrder]}
+              onSelectionChange={(keys) => {
+                const next = Array.from(keys)[0] as AssignmentSort | undefined;
+                if (next) setSortOrder(next);
+              }}
+              disallowEmptySelection
+              className="max-w-[220px]"
+            >
+              <SelectItem key="newest">Newest first (present → past)</SelectItem>
+              <SelectItem key="oldest">Oldest first (past → present)</SelectItem>
+            </Select>
+            {filtersActive && (
+              <Button size="sm" variant="light" onPress={clearFilters}>
+                Clear filters
               </Button>
             )}
           </div>
 
           {filtered.length ? (
+            viewMode === "list" ? (
             <div className="overflow-x-auto">
               <Table aria-label={`${staff.name} assignments`} removeWrapper className="min-w-[640px]">
                 <TableHeader>
@@ -341,16 +423,163 @@ export default function StaffAssignmentsClient({
               </Table>
               {rowError && <p className="text-sm text-danger mt-2">{rowError}</p>}
             </div>
+            ) : (
+              <div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {filtered.map((a) => {
+                    const isEditing = isOwner && editingOrderId === a.orderId;
+                    const money = assignmentMoney(a);
+                    return (
+                      <Card key={a.orderId} className="bg-content1 border border-divider">
+                        <CardBody className="p-4 space-y-2">
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <span className="text-foreground/40 text-xs">{a.orderId}</span>
+                              <Input
+                                aria-label="Program"
+                                label="Program"
+                                size="sm"
+                                variant="bordered"
+                                value={editState.program}
+                                onValueChange={(v) => setEditState({ ...editState, program: v })}
+                              />
+                              <Input
+                                aria-label="Customer name"
+                                label="Customer"
+                                size="sm"
+                                variant="bordered"
+                                value={editState.customerName}
+                                onValueChange={(v) => setEditState({ ...editState, customerName: v })}
+                              />
+                              <Input
+                                aria-label="Amount"
+                                label="Amount"
+                                size="sm"
+                                variant="bordered"
+                                inputMode="decimal"
+                                startContent={<span className="text-foreground/50">₹</span>}
+                                value={editState.amount}
+                                onValueChange={(v) => setEditState({ ...editState, amount: v.replace(/[^\d.]/g, "") })}
+                              />
+                              <Input
+                                aria-label="Date"
+                                label="Date"
+                                type="date"
+                                size="sm"
+                                variant="bordered"
+                                value={editState.date}
+                                onValueChange={(v) => setEditState({ ...editState, date: v })}
+                              />
+                              <div className="flex gap-1">
+                                {(["due", "paid"] as const).map((st) => (
+                                  <Button
+                                    key={st}
+                                    size="sm"
+                                    radius="full"
+                                    variant={editState.paymentStatus === st ? "solid" : "bordered"}
+                                    color={editState.paymentStatus === st ? (st === "paid" ? "success" : "warning") : "default"}
+                                    onPress={() => setEditState({ ...editState, paymentStatus: st })}
+                                  >
+                                    {st === "paid" ? "Paid" : "Due"}
+                                  </Button>
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-1 pt-1">
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  color="primary"
+                                  radius="sm"
+                                  isLoading={savingRow}
+                                  onPress={() => saveRow(a.orderId)}
+                                  aria-label="Save"
+                                >
+                                  <Check size={16} />
+                                </Button>
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="bordered"
+                                  radius="sm"
+                                  onPress={cancelEdit}
+                                  isDisabled={savingRow}
+                                  aria-label="Cancel"
+                                >
+                                  <X size={16} />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-xs text-foreground/40">{a.orderId}</p>
+                                  <p className="font-semibold truncate">{a.program}</p>
+                                  <p className="text-sm text-foreground/70 truncate">{a.customerName}</p>
+                                </div>
+                                <Chip size="sm" variant="flat" color={money.status === "paid" ? "success" : "warning"}>
+                                  {money.status === "paid" ? "Paid" : "Due"}
+                                </Chip>
+                              </div>
+                              <div className="flex items-end justify-between gap-2">
+                                <div>
+                                  <p className="font-semibold">{inr(money.total)}</p>
+                                  {money.status === "due" && money.advances > 0 && (
+                                    <p className="text-xs text-foreground/50">
+                                      Advance {inr(money.advances)} &middot; Due {inr(money.due)}
+                                    </p>
+                                  )}
+                                </div>
+                                <p className="text-xs text-foreground/50">{a.date || "—"}</p>
+                              </div>
+                              <div className="flex items-center gap-1 pt-1">
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="flat"
+                                  color="success"
+                                  radius="sm"
+                                  onPress={() => setPayOrderId(a.orderId)}
+                                  aria-label={isOwner ? "Record or view advances" : "View advances"}
+                                  title={isOwner ? "Advances given" : "View advances"}
+                                >
+                                  <Wallet size={16} />
+                                </Button>
+                                {isOwner && (
+                                  <Button
+                                    isIconOnly
+                                    size="sm"
+                                    variant="flat"
+                                    radius="sm"
+                                    onPress={() => startEdit(a)}
+                                    aria-label="Edit assignment"
+                                  >
+                                    <Pencil size={16} />
+                                  </Button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </CardBody>
+                      </Card>
+                    );
+                  })}
+                </div>
+                {rowError && <p className="text-sm text-danger mt-2">{rowError}</p>}
+              </div>
+            )
           ) : (
             <p className="text-sm text-foreground/60 py-6 text-center">
-              {staff.assignments?.length ? "No assignments in this date range." : "No assignments yet."}
+              {totalOrders ? "No assignments match the current filters." : "No assignments yet."}
             </p>
           )}
 
           {filtered.length > 0 && isOwner && (
             <div className="flex flex-wrap items-center justify-between gap-2 bg-primary/10 border border-primary/40 rounded-md px-4 py-3">
               <span className="font-semibold" style={{ fontFamily: "var(--font-mono)" }}>
-                {range ? "Total (in range)" : "Total"}
+                {filtersActive
+                  ? `Total (${filtered.length} of ${totalOrders} order${totalOrders === 1 ? "" : "s"})`
+                  : `Total (${filtered.length} order${filtered.length === 1 ? "" : "s"})`}
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 <Chip color="warning" variant="flat" className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>

@@ -57,6 +57,47 @@ export function sumBorrows(borrows?: StaffBorrow[]): number {
   return (borrows ?? []).reduce((sum, b) => sum + parseAmt(b.amount), 0);
 }
 
+export type AssignmentSort = "newest" | "oldest";
+
+/** Numeric part of an order id (ADVKM-0042 -> 42), used only to break ties between same-day orders. */
+function orderSeq(orderId: string): number {
+  const m = /(\d+)\s*$/.exec(orderId);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * Sorts assignments by event date. "newest" = present to past (default), "oldest" = past to
+ * present. Assignments with no date always sit at the bottom, whichever way you sort. Same-day
+ * orders fall back to order number so the order is stable.
+ */
+export function sortAssignmentsByDate<T extends { orderId: string; date?: string }>(
+  list: T[],
+  order: AssignmentSort
+): T[] {
+  const dir = order === "newest" ? -1 : 1;
+  return [...list].sort((a, b) => {
+    const da = a.date ? Date.parse(a.date) : NaN;
+    const db = b.date ? Date.parse(b.date) : NaN;
+    const aValid = Number.isFinite(da);
+    const bValid = Number.isFinite(db);
+    if (!aValid && !bValid) return dir * (orderSeq(a.orderId) - orderSeq(b.orderId));
+    if (!aValid) return 1;
+    if (!bValid) return -1;
+    if (da !== db) return dir * (da - db);
+    return dir * (orderSeq(a.orderId) - orderSeq(b.orderId));
+  });
+}
+
+/** Order filter: matches the order id, program or customer name (case-insensitive, partial). */
+export function matchesOrderQuery<T extends { orderId: string; program?: string; customerName?: string }>(
+  a: T,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [a.orderId, a.program, a.customerName].some((f) => (f || "").toLowerCase().includes(q));
+}
+
 export interface StaffBalance {
   /** Sum of the amounts of ALL orders assigned to the staff member. */
   total: number;

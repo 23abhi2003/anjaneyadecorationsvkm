@@ -103,6 +103,7 @@ export function collectItemLines(order: Order): string[] {
   if (order.decoration) {
     const d = order.decoration;
     flatten(d.frames).forEach((l) => lines.push(`Frame — ${l}`));
+    flatten(d.fiberItems).forEach((l) => lines.push(`Fiber item — ${l}`));
     flatten(d.ceiling).forEach((l) => lines.push(`Ceiling — ${l}`));
     flatten(d.ceilingPoles).forEach((l) => lines.push(`Pole — ${l}`));
     flatten(d.flowers).forEach((l) => lines.push(`Flowers — ${l}`));

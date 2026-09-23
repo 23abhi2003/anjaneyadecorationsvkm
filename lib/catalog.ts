@@ -38,6 +38,17 @@ export const FLOWER_TYPES: string[] = [
 
 export const CEILING_POLE_SIZES: string[] = ["18 feet", "15 feet", "12 feet", "+ Type"];
 
+export const FIBER_ITEMS: string[] = [
+  "Poles",
+  "God idols",
+  "Peacocks",
+  "Kaman",
+  "Haldhi chairs",
+  "Gangalam",
+  "Kujjalu",
+  "Decoration sofa",
+];
+
 export const PAYMENT_TYPES: string[] = ["UPI", "Cash", "Other"];
 
 export const STOVE_TYPES: string[] = ["Double", "Single"];

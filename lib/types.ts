@@ -73,6 +73,8 @@ export interface DecorationInfo {
   stageClothQty: string;
   djBoxes: string;
   ledLights: string;
+  /** Poles, god idols, peacocks, kaman, haldhi chairs, gangalam, kujjalu, decoration sofa, etc. */
+  fiberItems: QtyMap;
   ceiling: QtyMap;
   sidewalls: string;
   ceilingPoles: QtyMap;

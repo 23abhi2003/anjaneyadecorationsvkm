@@ -28,6 +28,7 @@ import {
   CEILING_SIZES,
   FLOWER_TYPES,
   CEILING_POLE_SIZES,
+  FIBER_ITEMS,
   PAYMENT_TYPES,
   STOVE_TYPES,
 } from "@/lib/catalog";
@@ -112,6 +113,7 @@ const emptyForm: WizardForm = {
     stageClothQty: "",
     djBoxes: "",
     ledLights: "",
+    fiberItems: {},
     ceiling: {},
     sidewalls: "",
     ceilingPoles: {},
@@ -168,6 +170,7 @@ type StepKey =
   | "tent-utensils"
   | "tent-extras"
   | "frames-cloth"
+  | "fiber-items"
   | "ceiling-poles"
   | "flowers"
   | "staff"
@@ -183,6 +186,7 @@ const STEP_TITLES: Record<StepKey, string> = {
   "tent-utensils": "Tables, chairs & utensils",
   "tent-extras": "Stoves, stands & lighting",
   "frames-cloth": "Frames, stage & lighting",
+  "fiber-items": "Fiber items",
   "ceiling-poles": "Ceiling & sidewalls",
   flowers: "Flowers",
   staff: "Assign staff",
@@ -199,7 +203,7 @@ function useSteps(serviceType: ServiceType, includeInvoice: boolean): StepKey[] 
       steps.push("tent-size", "bowls", "tent-utensils", "tent-extras");
     }
     if (serviceType === "decoration" || serviceType === "both") {
-      steps.push("frames-cloth", "ceiling-poles", "flowers");
+      steps.push("frames-cloth", "fiber-items", "ceiling-poles", "flowers");
     }
     steps.push("staff");
     // Staff accounts can create/edit orders but never touch invoice amounts —
@@ -820,6 +824,15 @@ export default function OrderWizard({
             </>
           )}
 
+          {step === "fiber-items" && (
+            <>
+              <p className="text-xs uppercase tracking-wide text-secondary mb-1" style={{ fontFamily: "var(--font-mono)" }}>
+                Fiber items
+              </p>
+              <QtyGrid options={FIBER_ITEMS} values={form.decoration.fiberItems} onChange={(k, v) => setQty("decoration.fiberItems", k, v)} />
+            </>
+          )}
+
           {step === "ceiling-poles" && (
             <>
               <p className="text-xs uppercase tracking-wide text-secondary mb-1" style={{ fontFamily: "var(--font-mono)" }}>
@@ -1052,6 +1065,7 @@ function StaffStep({
 const GROUP_STEP: Record<string, StepKey> = {
   "Tent sizes": "tent-size",
   Frames: "frames-cloth",
+  "Fiber items": "fiber-items",
   Ceiling: "ceiling-poles",
   "Ceiling poles": "ceiling-poles",
   Flowers: "flowers",
@@ -1089,6 +1103,7 @@ function ReviewSummary({
   }
   if (form.serviceType === "decoration" || form.serviceType === "both") {
     pushGroup("Frames", form.decoration.frames);
+    pushGroup("Fiber items", form.decoration.fiberItems);
     pushGroup("Ceiling", form.decoration.ceiling);
     pushGroup("Ceiling poles", form.decoration.ceilingPoles);
     pushGroup("Flowers", form.decoration.flowers);

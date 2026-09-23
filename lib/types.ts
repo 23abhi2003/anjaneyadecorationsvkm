@@ -108,6 +108,12 @@ export interface StaffBorrow {
   date: string;
   /** Why they borrowed it. */
   reason: string;
+  /**
+   * Has this borrow been repaid (in cash, outside payroll)? "due" (default,
+   * missing = due) still counts against the staff member's remaining
+   * balance; "paid" is settled and excluded. Owner-only to edit.
+   */
+  paymentStatus?: StaffPaymentStatus;
   createdAt?: string;
 }
 

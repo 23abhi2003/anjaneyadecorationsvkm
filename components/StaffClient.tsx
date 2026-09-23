@@ -155,9 +155,16 @@ export default function StaffClient({
                     </h3>
                   </button>
                   {canManage && (
-                    <Chip color="warning" variant="flat">
-                      {inr(pay.total)}
-                    </Chip>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Chip color="warning" variant="flat">
+                        {inr(pay.total)}
+                      </Chip>
+                      {pay.paid > 0 && (
+                        <Chip color="success" variant="flat" size="sm">
+                          Paid {inr(pay.paid)}
+                        </Chip>
+                      )}
+                    </div>
                   )}
                 </div>
                 {canManage && bal.borrowed > 0 && (
@@ -207,7 +214,14 @@ export default function StaffClient({
             const canManage = isOwner || selected.id === user?.staffId;
             return (
               <>
-                <ModalHeader style={{ fontFamily: "var(--font-display)" }}>{selected.name}</ModalHeader>
+                <ModalHeader style={{ fontFamily: "var(--font-display)" }} className="flex items-center gap-2">
+                  {selected.name}
+                  {canManage && pay.total > 0 && pay.due <= 0 && (
+                    <Chip color="success" variant="flat" size="sm">
+                      Fully paid
+                    </Chip>
+                  )}
+                </ModalHeader>
                 <ModalBody className="space-y-2 pb-2">
                   <p className="text-sm text-foreground/70">
                     <span className="text-foreground/50">Phone: </span>

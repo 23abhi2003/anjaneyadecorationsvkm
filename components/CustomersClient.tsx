@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Table,
   TableHeader,
@@ -12,6 +12,10 @@ import {
   Button,
   Chip,
   Checkbox,
+  Card,
+  CardBody,
+  Select,
+  SelectItem,
   Modal,
   ModalContent,
   ModalHeader,
@@ -19,12 +23,26 @@ import {
   ModalFooter,
   useDisclosure,
 } from "@heroui/react";
+import { LayoutGrid, List as ListIcon, Search } from "lucide-react";
 import { withOrderCounts, type CustomerWithCount } from "@/lib/customer";
-import type { Customer, Order } from "@/lib/types";
+import type { Customer, CustomerType, Order } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
+import Pagination from "@/components/Pagination";
+import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 const POLL_INTERVAL_MS = 15000; // refetch customers every 15s to reflect newly placed orders
+
+type TypeFilter = "all" | CustomerType;
+type OrdersFilter = "all" | "with" | "without";
+
+/** True if the free-text search matches this customer's name, phone, or "referred by". */
+function matchesSearch(c: CustomerWithCount, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystacks = [c.name || "", c.phone || "", c.referredBy || ""];
+  return haystacks.some((h) => h.toLowerCase().includes(q));
+}
 
 export default function CustomersClient({
   customers: initialCustomers,
@@ -43,6 +61,23 @@ export default function CustomersClient({
   const [refreshing, setRefreshing] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
   const isMounted = useRef(true);
+
+  // ---- filters, view, pagination ----
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [ordersFilter, setOrdersFilter] = useState<OrdersFilter>("all");
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [page, setPage] = useState(1);
+  const pageSize = MIN_PAGE_SIZE;
+
+  const filtersActive = !!search || typeFilter !== "all" || ordersFilter !== "all";
+
+  function clearFilters(): void {
+    setSearch("");
+    setTypeFilter("all");
+    setOrdersFilter("all");
+    setPage(1);
+  }
 
   // ---- delete state ----
   const [target, setTarget] = useState<CustomerWithCount | null>(null);
@@ -195,6 +230,26 @@ export default function CustomersClient({
     return () => clearTimeout(id);
   }, [notice]);
 
+  const filtered = useMemo(() => {
+    return customers
+      .filter((c) => matchesSearch(c, search))
+      .filter((c) => typeFilter === "all" || c.type === typeFilter)
+      .filter((c) => {
+        if (ordersFilter === "all") return true;
+        return ordersFilter === "with" ? c.orderCount > 0 : c.orderCount === 0;
+      })
+      // Newest first: assumes `id` is assigned in creation order (e.g. sequential
+      // or timestamp-based). Swap this for a `createdAt` field if one exists on Customer.
+      .sort((a, b) => (b.id || "").localeCompare(a.id || ""));
+  }, [customers, search, typeFilter, ordersFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, typeFilter, ordersFilter]);
+
+  const currentPage = clampPage(page, filtered.length, pageSize);
+  const paged = useMemo(() => paginate(filtered, currentPage, pageSize), [filtered, currentPage, pageSize]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -225,47 +280,163 @@ export default function CustomersClient({
         </Button>
       </div>
 
-      <div className="bg-content1 rounded-lg p-2 overflow-x-auto">
-        <Table removeWrapper aria-label="Customers" className="min-w-[720px]">
-          <TableHeader>
-            <TableColumn>NAME</TableColumn>
-            <TableColumn>PHONE</TableColumn>
-            <TableColumn>TYPE</TableColumn>
-            <TableColumn>REFERRED BY</TableColumn>
-            <TableColumn>ORDERS</TableColumn>
-            <TableColumn>{isOwner ? "ACTIONS" : ""}</TableColumn>
-          </TableHeader>
-          <TableBody emptyContent="No customers yet.">
-            {customers.map((c) => (
-              <TableRow key={c.id}>
-                <TableCell className="font-medium">{c.name}</TableCell>
-                <TableCell>{c.phone || "—"}</TableCell>
-                <TableCell>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+          {filtered.length} {filtered.length === 1 ? "customer" : "customers"}
+        </p>
+        <div className="flex items-center gap-1 bg-content2 rounded-md p-1 no-print">
+          <Button
+            isIconOnly
+            size="sm"
+            radius="sm"
+            variant={view === "list" ? "solid" : "light"}
+            color={view === "list" ? "primary" : "default"}
+            onPress={() => setView("list")}
+            aria-label="List view"
+            title="List view"
+          >
+            <ListIcon size={16} />
+          </Button>
+          <Button
+            isIconOnly
+            size="sm"
+            radius="sm"
+            variant={view === "grid" ? "solid" : "light"}
+            color={view === "grid" ? "primary" : "default"}
+            onPress={() => setView("grid")}
+            aria-label="Grid view"
+            title="Grid view"
+          >
+            <LayoutGrid size={16} />
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-content1 rounded-lg p-4 flex flex-wrap items-end gap-3 no-print">
+        <Input
+          label="Search"
+          placeholder="Name, phone or referred by"
+          variant="bordered"
+          value={search}
+          onValueChange={setSearch}
+          isClearable
+          onClear={() => setSearch("")}
+          startContent={<Search size={16} className="text-foreground/50" />}
+          className="max-w-xs"
+        />
+        <Select
+          label="Type"
+          variant="bordered"
+          selectedKeys={[typeFilter]}
+          onSelectionChange={(keys) => {
+            const next = Array.from(keys)[0] as TypeFilter | undefined;
+            if (next) setTypeFilter(next);
+          }}
+          disallowEmptySelection
+          className="max-w-40"
+        >
+          <SelectItem key="all">All types</SelectItem>
+          <SelectItem key="new">New</SelectItem>
+          <SelectItem key="older">Older</SelectItem>
+        </Select>
+        <Select
+          label="Orders"
+          variant="bordered"
+          selectedKeys={[ordersFilter]}
+          onSelectionChange={(keys) => {
+            const next = Array.from(keys)[0] as OrdersFilter | undefined;
+            if (next) setOrdersFilter(next);
+          }}
+          disallowEmptySelection
+          className="max-w-45"
+        >
+          <SelectItem key="all">With &amp; without orders</SelectItem>
+          <SelectItem key="with">Has orders</SelectItem>
+          <SelectItem key="without">No orders yet</SelectItem>
+        </Select>
+        {filtersActive && (
+          <Button size="sm" variant="light" onPress={clearFilters}>
+            Clear filters
+          </Button>
+        )}
+      </div>
+
+      {view === "list" ? (
+        <div className="bg-content1 rounded-lg p-2 overflow-x-auto">
+          <Table removeWrapper aria-label="Customers" className="min-w-[720px]">
+            <TableHeader>
+              <TableColumn>NAME</TableColumn>
+              <TableColumn>PHONE</TableColumn>
+              <TableColumn>TYPE</TableColumn>
+              <TableColumn>REFERRED BY</TableColumn>
+              <TableColumn>ORDERS</TableColumn>
+              <TableColumn>{isOwner ? "ACTIONS" : ""}</TableColumn>
+            </TableHeader>
+            <TableBody emptyContent="No customers match these filters.">
+              {paged.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell>{c.phone || "—"}</TableCell>
+                  <TableCell>
+                    <Chip size="sm" variant="flat" color={c.type === "older" ? "secondary" : "warning"}>
+                      {c.type}
+                    </Chip>
+                  </TableCell>
+                  <TableCell>{c.referredBy?.trim() || "—"}</TableCell>
+                  <TableCell>{c.orderCount}</TableCell>
+                  <TableCell>
+                    {isOwner ? (
+                      <Button
+                        size="sm"
+                        variant="bordered"
+                        color="danger"
+                        radius="sm"
+                        className="no-print"
+                        onPress={() => askDelete(c)}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : paged.length === 0 ? (
+        <div className="bg-content1 rounded-lg py-16 text-center text-sm text-foreground/50">
+          No customers match these filters.
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {paged.map((c) => (
+            <Card key={c.id} className="bg-content1 border border-divider">
+              <CardBody className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold truncate">{c.name}</p>
                   <Chip size="sm" variant="flat" color={c.type === "older" ? "secondary" : "warning"}>
                     {c.type}
                   </Chip>
-                </TableCell>
-                <TableCell>{c.referredBy?.trim() || "—"}</TableCell>
-                <TableCell>{c.orderCount}</TableCell>
-                <TableCell>
-                  {isOwner ? (
-                    <Button
-                      size="sm"
-                      variant="bordered"
-                      color="danger"
-                      radius="sm"
-                      className="no-print"
-                      onPress={() => askDelete(c)}
-                    >
+                </div>
+                <p className="text-sm text-foreground/70">{c.phone || "no phone on file"}</p>
+                <p className="text-xs text-foreground/50">Referred by: {c.referredBy?.trim() || "—"}</p>
+                <div className="flex items-center justify-between pt-2 border-t border-divider/60">
+                  <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+                    {c.orderCount} order{c.orderCount === 1 ? "" : "s"}
+                  </span>
+                  {isOwner && (
+                    <Button size="sm" variant="bordered" color="danger" radius="sm" className="no-print" onPress={() => askDelete(c)}>
                       Delete
                     </Button>
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Pagination page={currentPage} pageSize={pageSize} total={filtered.length} itemLabel="customers" onPageChange={setPage} />
 
       {/* Delete confirmation. Two shapes, depending on whether the customer
           has orders — see askDelete() above. */}

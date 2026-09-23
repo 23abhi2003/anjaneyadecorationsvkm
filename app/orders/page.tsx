@@ -7,6 +7,8 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { generateCombinedOrdersPdf } from "@/lib/pdf";
 import type { Order, OrderStatus } from "@/lib/types";
+import Pagination from "@/components/Pagination";
+import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -105,6 +107,8 @@ export default function OrdersPage() {
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [combining, setCombining] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = MIN_PAGE_SIZE;
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +132,9 @@ export default function OrdersPage() {
   }, []);
 
   const selectedOrders = useMemo(() => orders.filter((o) => selectedIds.has(o.id)), [orders, selectedIds]);
+
+  const currentPage = clampPage(page, orders.length, pageSize);
+  const paged = useMemo(() => paginate(orders, currentPage, pageSize), [orders, currentPage, pageSize]);
 
   function toggleSelected(id: string): void {
     setSelectedIds((prev) => {
@@ -191,7 +198,12 @@ export default function OrdersPage() {
       {!loading && error && <p className="text-center text-danger py-10">{error}</p>}
 
       {!loading && !error && (
-        <OrdersList orders={orders} selectable selected={selectedIds} onToggle={toggleSelected} />
+        <>
+          <OrdersList orders={paged} selectable selected={selectedIds} onToggle={toggleSelected} />
+          <div className="mt-4">
+            <Pagination page={currentPage} pageSize={pageSize} total={orders.length} itemLabel="orders" onPageChange={setPage} />
+          </div>
+        </>
       )}
     </div>
   );

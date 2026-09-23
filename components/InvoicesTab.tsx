@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Table,
@@ -24,6 +24,8 @@ import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
 import type { Order, OrderStatus } from "@/lib/types";
 import { PAYMENT_TYPES } from "@/lib/catalog";
+import Pagination from "@/components/Pagination";
+import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -78,12 +80,15 @@ function matchesSearch(o: Order, query: string): boolean {
 }
 
 export default function InvoicesTab({ orders }: { orders: Order[] }) {
-  const [view, setView] = useState<"list" | "grid">("list");
+  // Opening Invoices goes straight to grid view.
+  const [view, setView] = useState<"list" | "grid">("grid");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
   const [paymentTypeFilter, setPaymentTypeFilter] = useState<"all" | string>("all");
   const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = MIN_PAGE_SIZE;
 
   const filtersActive =
     !!search || statusFilter !== "all" || paymentFilter !== "all" || paymentTypeFilter !== "all" || !!range;
@@ -94,7 +99,12 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
     setPaymentFilter("all");
     setPaymentTypeFilter("all");
     setRange(null);
+    setPage(1);
   }
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, paymentFilter, paymentTypeFilter, range]);
 
   const rows = useMemo(() => {
     return [...orders]
@@ -107,7 +117,12 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
       })
       .filter((o) => paymentTypeFilter === "all" || (o.invoice?.paymentType || "") === paymentTypeFilter)
       .filter((o) => withinRange(o.eventDate, range))
-      .sort((a, b) => (a.eventDate || "").localeCompare(b.eventDate || ""));
+      // Newest first: latest event date (and latest order id as a tiebreaker) leads page 1.
+      .sort((a, b) => {
+        const byDate = (b.eventDate || "").localeCompare(a.eventDate || "");
+        if (byDate !== 0) return byDate;
+        return (b.id || "").localeCompare(a.id || "");
+      });
   }, [orders, search, statusFilter, paymentFilter, paymentTypeFilter, range]);
 
   /** Owner-facing totals across the currently filtered invoices: amount, dues, staff pay, and net profit. */
@@ -126,6 +141,9 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
       { total: 0, due: 0, staff: 0, profit: 0 }
     );
   }, [rows]);
+
+  const currentPage = clampPage(page, rows.length, pageSize);
+  const paged = useMemo(() => paginate(rows, currentPage, pageSize), [rows, currentPage, pageSize]);
 
   return (
     <div className="space-y-3">
@@ -247,7 +265,7 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
               <TableColumn>STATUS</TableColumn>
             </TableHeader>
             <TableBody emptyContent="No invoices match these filters.">
-              {rows.map((o) => {
+              {paged.map((o) => {
                 const { total, advance, due } = invoiceMoney(o);
                 return (
                   <TableRow key={o.id} className="cursor-pointer">
@@ -277,7 +295,7 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
         <div className="bg-content1 rounded-lg py-16 text-center text-sm text-foreground/50">No invoices match these filters.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {rows.map((o) => {
+          {paged.map((o) => {
             const { total, advance, due } = invoiceMoney(o);
             return (
               <Card key={o.id} className="bg-content1 border border-divider">
@@ -328,6 +346,8 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
           })}
         </div>
       )}
+
+      <Pagination page={currentPage} pageSize={pageSize} total={rows.length} itemLabel="invoices" onPageChange={setPage} />
 
       <div className="grid sm:grid-cols-4 gap-4 pt-2">
         <div className="bg-content1 rounded-lg p-5 shadow-lg">

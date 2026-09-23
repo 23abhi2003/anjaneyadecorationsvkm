@@ -53,8 +53,19 @@ export function summarizeAssignments(
   );
 }
 
+/** Every borrow ever recorded, repaid or not. */
 export function sumBorrows(borrows?: StaffBorrow[]): number {
   return (borrows ?? []).reduce((sum, b) => sum + parseAmt(b.amount), 0);
+}
+
+/** Borrows still "due" (missing status = due) — the only ones that count against the balance below. */
+export function sumOutstandingBorrows(borrows?: StaffBorrow[]): number {
+  return (borrows ?? []).reduce((sum, b) => sum + (b.paymentStatus === "paid" ? 0 : parseAmt(b.amount)), 0);
+}
+
+/** Borrows the staff member has already repaid. */
+export function sumRepaidBorrows(borrows?: StaffBorrow[]): number {
+  return (borrows ?? []).reduce((sum, b) => sum + (b.paymentStatus === "paid" ? parseAmt(b.amount) : 0), 0);
 }
 
 export type AssignmentSort = "newest" | "oldest";
@@ -101,23 +112,31 @@ export function matchesOrderQuery<T extends { orderId: string; program?: string;
 export interface StaffBalance {
   /** Sum of the amounts of ALL orders assigned to the staff member. */
   total: number;
-  /** Everything they borrowed. */
+  /** Borrows still outstanding (not yet repaid) — this is what reduces `remaining`. */
   borrowed: number;
-  /** total - borrowed. Negative when they have borrowed more than they have earned so far. */
+  /** Every borrow ever recorded, repaid or not — for display only. */
+  borrowedTotal: number;
+  /** Borrows the staff member has already repaid (outside payroll). */
+  repaid: number;
+  /** total - borrowed (outstanding only). Negative when they've borrowed more than earned so far. */
   remaining: number;
 }
 
 /**
  * Borrows are deducted from the total of ALL the staff member's assigned orders
  * (never a date-filtered subset), so pass their full `assignments` list here.
+ * Only borrows still marked "due" count against `remaining` — one the owner
+ * has marked "paid" (repaid) is settled and excluded.
  */
 export function staffBalance(
   assignments: Array<{ amount?: string; paymentStatus?: StaffPaymentStatus; payments?: StaffPayment[] }> | undefined,
   borrows: StaffBorrow[] | undefined
 ): StaffBalance {
   const { total } = summarizeAssignments(assignments ?? []);
-  const borrowed = sumBorrows(borrows);
-  return { total, borrowed, remaining: Math.round((total - borrowed) * 100) / 100 };
+  const borrowed = sumOutstandingBorrows(borrows);
+  const borrowedTotal = sumBorrows(borrows);
+  const repaid = sumRepaidBorrows(borrows);
+  return { total, borrowed, borrowedTotal, repaid, remaining: Math.round((total - borrowed) * 100) / 100 };
 }
 
 /** ₹12,500 style (Indian digit grouping). Negatives read as -₹500. */

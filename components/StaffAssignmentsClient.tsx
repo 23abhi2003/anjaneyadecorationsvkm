@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Button,
@@ -35,6 +35,8 @@ import {
 } from "@/lib/staffPay";
 import StaffPaymentsModal from "@/components/StaffPaymentsModal";
 import StaffBorrowsPanel from "@/components/StaffBorrowsPanel";
+import Pagination from "@/components/Pagination";
+import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 /** Parses an order/assignment date string (YYYY-MM-DD) into a comparable Date, tolerating blanks. */
 function toDate(d?: string): Date | null {
@@ -76,7 +78,10 @@ export default function StaffAssignmentsClient({
   const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
   const [orderQuery, setOrderQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<AssignmentSort>("newest");
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  // Opening a staff member's assignments (or an invoice) goes straight to grid view.
+  const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(MIN_PAGE_SIZE);
 
   // Owner-only inline editing. Keyed by orderId since that's what the edit
   // endpoint is keyed on. Only one row can be edited at a time.
@@ -95,6 +100,12 @@ export default function StaffAssignmentsClient({
   // `staff.assignments`, so it refreshes in place after a payment is added/removed.
   const [payOrderId, setPayOrderId] = useState<string | null>(null);
 
+  // Any filter/sort change goes back to page 1 — otherwise a narrower result set can
+  // strand the view on a page that no longer exists.
+  useEffect(() => {
+    setPage(1);
+  }, [orderQuery, range, sortOrder, pageSize]);
+
   // All hooks must run unconditionally before any early return below.
   const filtered = useMemo(
     () =>
@@ -109,9 +120,15 @@ export default function StaffAssignmentsClient({
   const totalOrders = (staff.assignments || []).length;
   const filtersActive = !!range || orderQuery.trim() !== "";
 
+  // Page is clamped against the current filtered length, so a filter change that shrinks
+  // the list (or a fresh assignment being added) never strands the view on an empty page.
+  const currentPage = clampPage(page, filtered.length, pageSize);
+  const paged = useMemo(() => paginate(filtered, currentPage, pageSize), [filtered, currentPage, pageSize]);
+
   function clearFilters(): void {
     setRange(null);
     setOrderQuery("");
+    setPage(1);
   }
 
   // Staff can only view their own assignments; anyone else gets turned away.
@@ -266,7 +283,7 @@ export default function StaffAssignmentsClient({
                   <TableColumn>ACTIONS</TableColumn>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((a) => {
+                  {paged.map((a) => {
                     const isEditing = isOwner && editingOrderId === a.orderId;
                     const money = assignmentMoney(a);
                     return (
@@ -426,7 +443,7 @@ export default function StaffAssignmentsClient({
             ) : (
               <div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {filtered.map((a) => {
+                  {paged.map((a) => {
                     const isEditing = isOwner && editingOrderId === a.orderId;
                     const money = assignmentMoney(a);
                     return (
@@ -573,6 +590,15 @@ export default function StaffAssignmentsClient({
               {totalOrders ? "No assignments match the current filters." : "No assignments yet."}
             </p>
           )}
+
+          <Pagination
+            page={currentPage}
+            pageSize={pageSize}
+            total={filtered.length}
+            itemLabel="assignments"
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
 
           {filtered.length > 0 && (isOwner || isSelf) && (
             <div className="flex flex-wrap items-center justify-between gap-2 bg-primary/10 border border-primary/40 rounded-md px-4 py-3">

@@ -98,6 +98,8 @@ export function collectItemLines(order: Order): string[] {
       ["Wireboxes", t.wireboxes],
     ];
     extras.filter(([, v]) => v).forEach(([k, v]) => lines.push(`${k}: ${v}`));
+    flatten(t.utensilsExtra).forEach((l) => lines.push(`Utensil — ${l}`));
+    flatten(t.extrasExtra).forEach((l) => lines.push(`Item — ${l}`));
   }
 
   if (order.decoration) {
@@ -117,6 +119,7 @@ export function collectItemLines(order: Order): string[] {
       ["Sidewalls", d.sidewalls],
     ];
     extras.filter(([, v]) => v).forEach(([k, v]) => lines.push(`${k}: ${v}`));
+    flatten(d.framesExtra).forEach((l) => lines.push(`Item — ${l}`));
   }
 
   return lines;

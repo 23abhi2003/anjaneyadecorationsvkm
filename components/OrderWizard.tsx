@@ -103,6 +103,8 @@ const emptyForm: WizardForm = {
     djBoxes: "",
     woodenTables: "",
     wireboxes: "",
+    utensilsExtra: {},
+    extrasExtra: {},
   },
   decoration: {
     frames: {},
@@ -118,6 +120,7 @@ const emptyForm: WizardForm = {
     sidewalls: "",
     ceilingPoles: {},
     flowers: {},
+    framesExtra: {},
   },
   staffAssigned: [],
   invoice: { totalAmount: "", advancePaid: "", paymentType: "", investment: "" },
@@ -759,20 +762,31 @@ export default function OrderWizard({
             </>
           )}
           {step === "tent-utensils" && (
-            <div className="grid sm:grid-cols-2 gap-3">
-              <QtyField label="Tables, big" value={form.tenthouse.tablesBig} onChange={(v) => setPath("tenthouse.tablesBig", v)} />
-              <QtyField label="Tables, small" value={form.tenthouse.tablesSmall} onChange={(v) => setPath("tenthouse.tablesSmall", v)} />
-              <QtyField label="Chairs" value={form.tenthouse.chairs} onChange={(v) => setPath("tenthouse.chairs", v)} />
-              <QtyField label="Rice dishes (thatlu)" value={form.tenthouse.riceDishes} onChange={(v) => setPath("tenthouse.riceDishes", v)} />
-              <QtyField label="Rice spoons" value={form.tenthouse.riceSpoons} onChange={(v) => setPath("tenthouse.riceSpoons", v)} />
-              <QtyField label="Curry buckets (bakitlu)" value={form.tenthouse.curryBuckets} onChange={(v) => setPath("tenthouse.curryBuckets", v)} />
-              <QtyField label="Curry spoons" value={form.tenthouse.currySpoons} onChange={(v) => setPath("tenthouse.currySpoons", v)} />
-              <QtyField label="Curry donga (big)" value={form.tenthouse.curryDonga} onChange={(v) => setPath("tenthouse.curryDonga", v)} />
-              <QtyField label="Kabgir (big spoon)" value={form.tenthouse.kabgir} onChange={(v) => setPath("tenthouse.kabgir", v)} />
-              <QtyField label="Jallithati (rice filter bowl)" value={form.tenthouse.jallithati} onChange={(v) => setPath("tenthouse.jallithati", v)} />
-              <QtyField label="Jalligante" value={form.tenthouse.jalligante} onChange={(v) => setPath("tenthouse.jalligante", v)} />
-              <QtyField label="Jugs" value={form.tenthouse.jugs} onChange={(v) => setPath("tenthouse.jugs", v)} />
-            </div>
+            <>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <QtyField label="Tables, big" value={form.tenthouse.tablesBig} onChange={(v) => setPath("tenthouse.tablesBig", v)} />
+                <QtyField label="Tables, small" value={form.tenthouse.tablesSmall} onChange={(v) => setPath("tenthouse.tablesSmall", v)} />
+                <QtyField label="Chairs" value={form.tenthouse.chairs} onChange={(v) => setPath("tenthouse.chairs", v)} />
+                <QtyField label="Rice dishes (thatlu)" value={form.tenthouse.riceDishes} onChange={(v) => setPath("tenthouse.riceDishes", v)} />
+                <QtyField label="Rice spoons" value={form.tenthouse.riceSpoons} onChange={(v) => setPath("tenthouse.riceSpoons", v)} />
+                <QtyField label="Curry buckets (bakitlu)" value={form.tenthouse.curryBuckets} onChange={(v) => setPath("tenthouse.curryBuckets", v)} />
+                <QtyField label="Curry spoons" value={form.tenthouse.currySpoons} onChange={(v) => setPath("tenthouse.currySpoons", v)} />
+                <QtyField label="Curry donga (big)" value={form.tenthouse.curryDonga} onChange={(v) => setPath("tenthouse.curryDonga", v)} />
+                <QtyField label="Kabgir (big spoon)" value={form.tenthouse.kabgir} onChange={(v) => setPath("tenthouse.kabgir", v)} />
+                <QtyField label="Jallithati (rice filter bowl)" value={form.tenthouse.jallithati} onChange={(v) => setPath("tenthouse.jallithati", v)} />
+                <QtyField label="Jalligante" value={form.tenthouse.jalligante} onChange={(v) => setPath("tenthouse.jalligante", v)} />
+                <QtyField label="Jugs" value={form.tenthouse.jugs} onChange={(v) => setPath("tenthouse.jugs", v)} />
+              </div>
+              <p className="text-xs uppercase tracking-wide text-secondary mb-1 mt-4" style={{ fontFamily: "var(--font-mono)" }}>
+                Other utensils
+              </p>
+              <QtyGrid
+                options={[]}
+                values={form.tenthouse.utensilsExtra}
+                onChange={(k, v) => setQty("tenthouse.utensilsExtra", k, v)}
+                addLabel="Item name"
+              />
+            </>
           )}
 
           {step === "tent-extras" && (
@@ -796,6 +810,15 @@ export default function OrderWizard({
                 <QtyField label="Wooden tables" value={form.tenthouse.woodenTables} onChange={(v) => setPath("tenthouse.woodenTables", v)} />
                 <QtyField label="Wireboxes" value={form.tenthouse.wireboxes} onChange={(v) => setPath("tenthouse.wireboxes", v)} />
               </div>
+              <p className="text-xs uppercase tracking-wide text-secondary mb-1 mt-4" style={{ fontFamily: "var(--font-mono)" }}>
+                Other items
+              </p>
+              <QtyGrid
+                options={[]}
+                values={form.tenthouse.extrasExtra}
+                onChange={(k, v) => setQty("tenthouse.extrasExtra", k, v)}
+                addLabel="Item name"
+              />
             </>
           )}
 
@@ -821,6 +844,15 @@ export default function OrderWizard({
                   <Input type="number" label="Qty" variant="bordered" size="sm" value={form.decoration.stageClothQty} onValueChange={(v) => setPath("decoration.stageClothQty", v)} />
                 </div>
               </div>
+              <p className="text-xs uppercase tracking-wide text-secondary mb-1 mt-2" style={{ fontFamily: "var(--font-mono)" }}>
+                Other items
+              </p>
+              <QtyGrid
+                options={[]}
+                values={form.decoration.framesExtra}
+                onChange={(k, v) => setQty("decoration.framesExtra", k, v)}
+                addLabel="Item name"
+              />
             </>
           )}
 
@@ -1064,7 +1096,10 @@ function StaffStep({
 /** Which wizard step to jump back to when editing a given review-summary group. */
 const GROUP_STEP: Record<string, StepKey> = {
   "Tent sizes": "tent-size",
+  "Other utensils": "tent-utensils",
+  "Other tenthouse items": "tent-extras",
   Frames: "frames-cloth",
+  "Other decoration items": "frames-cloth",
   "Fiber items": "fiber-items",
   Ceiling: "ceiling-poles",
   "Ceiling poles": "ceiling-poles",
@@ -1100,9 +1135,12 @@ function ReviewSummary({
   if (form.serviceType === "tenthouse" || form.serviceType === "both") {
     pushGroup("Tent sizes", form.tenthouse.tents);
     Object.entries(form.tenthouse.bowls).forEach(([t, obj]) => pushGroup(`Bowls — ${t}`, obj));
+    pushGroup("Other utensils", form.tenthouse.utensilsExtra);
+    pushGroup("Other tenthouse items", form.tenthouse.extrasExtra);
   }
   if (form.serviceType === "decoration" || form.serviceType === "both") {
     pushGroup("Frames", form.decoration.frames);
+    pushGroup("Other decoration items", form.decoration.framesExtra);
     pushGroup("Fiber items", form.decoration.fiberItems);
     pushGroup("Ceiling", form.decoration.ceiling);
     pushGroup("Ceiling poles", form.decoration.ceilingPoles);

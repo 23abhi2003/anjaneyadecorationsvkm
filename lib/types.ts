@@ -62,6 +62,10 @@ export interface TenthouseInfo {
   djBoxes: string;
   woodenTables: string;
   wireboxes: string;
+  /** Extra items typed in on the "Tables, chairs & utensils" step, beyond the fixed fields above. */
+  utensilsExtra: QtyMap;
+  /** Extra items typed in on the "Stoves, stands & lighting" step, beyond the fixed fields above. */
+  extrasExtra: QtyMap;
 }
 
 export interface DecorationInfo {
@@ -79,6 +83,8 @@ export interface DecorationInfo {
   sidewalls: string;
   ceilingPoles: QtyMap;
   flowers: QtyMap;
+  /** Extra items typed in on the "Frames, stage & lighting" step, beyond the fixed fields above. */
+  framesExtra: QtyMap;
 }
 
 /** Has the owner fully settled what a staff member is owed for one job? ("paid" = fully settled) */

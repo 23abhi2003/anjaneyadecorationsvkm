@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { generateCombinedOrdersPdf } from "@/lib/pdf";
 import type { Order, OrderStatus } from "@/lib/types";
-import Pagination from "@/components/Pagination";
+import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {

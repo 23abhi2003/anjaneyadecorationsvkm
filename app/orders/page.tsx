@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Button, Card, CardBody, Checkbox, Chip, Spinner } from "@heroui/react";
+import { Button, Card, CardBody, Checkbox, Chip, Input, Select, SelectItem, Spinner } from "@heroui/react";
+import { Search } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { generateCombinedOrdersPdf } from "@/lib/pdf";
@@ -16,6 +17,8 @@ const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   completed: "secondary",
 };
 
+type StatusFilter = "all" | OrderStatus;
+
 function orderTotal(o: Order): number {
   return parseFloat(o.invoice?.totalAmount || "0") || 0;
 }
@@ -26,6 +29,14 @@ function orderAdvance(o: Order): number {
 
 function orderDue(o: Order): number {
   return Math.max(orderTotal(o) - orderAdvance(o), 0);
+}
+
+/** True if the free-text search matches this order's customer name, phone, or "referred by". */
+function matchesSearch(o: Order, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystacks = [o.customer?.name || "", o.customer?.phone || "", o.customer?.referredBy || "", o.id || ""];
+  return haystacks.some((h) => h.toLowerCase().includes(q));
 }
 
 function OrdersList({
@@ -41,7 +52,7 @@ function OrdersList({
   onToggle?: (id: string) => void;
 }) {
   if (orders.length === 0) {
-    return <p className="text-[#F8F4E6]/60 text-center py-10">No orders yet.</p>;
+    return <p className="text-[#F8F4E6]/60 text-center py-10">No orders match these filters.</p>;
   }
   return (
     <div className="grid sm:grid-cols-2 gap-4">
@@ -110,6 +121,17 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1);
   const pageSize = MIN_PAGE_SIZE;
 
+  // ---- filters ----
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const filtersActive = !!search || statusFilter !== "all";
+
+  function clearFilters(): void {
+    setSearch("");
+    setStatusFilter("all");
+    setPage(1);
+  }
+
   useEffect(() => {
     let cancelled = false;
     apiFetch("/api/orders")
@@ -133,8 +155,18 @@ export default function OrdersPage() {
 
   const selectedOrders = useMemo(() => orders.filter((o) => selectedIds.has(o.id)), [orders, selectedIds]);
 
-  const currentPage = clampPage(page, orders.length, pageSize);
-  const paged = useMemo(() => paginate(orders, currentPage, pageSize), [orders, currentPage, pageSize]);
+  const filtered = useMemo(() => {
+    return orders
+      .filter((o) => matchesSearch(o, search))
+      .filter((o) => statusFilter === "all" || o.status === statusFilter);
+  }, [orders, search, statusFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const currentPage = clampPage(page, filtered.length, pageSize);
+  const paged = useMemo(() => paginate(filtered, currentPage, pageSize), [filtered, currentPage, pageSize]);
 
   function toggleSelected(id: string): void {
     setSelectedIds((prev) => {
@@ -165,6 +197,47 @@ export default function OrdersPage() {
           + Create Order
         </Button>
       </div>
+
+      <div className="bg-content1 rounded-lg p-4 flex flex-wrap items-end gap-3 mb-4 no-print">
+        <Input
+          label="Search"
+          placeholder="Customer name, phone or referred by"
+          variant="bordered"
+          value={search}
+          onValueChange={setSearch}
+          isClearable
+          onClear={() => setSearch("")}
+          startContent={<Search size={16} className="text-foreground/50" />}
+          className="max-w-xs"
+        />
+        <Select
+          label="Status"
+          variant="bordered"
+          selectedKeys={[statusFilter]}
+          onSelectionChange={(keys) => {
+            const next = Array.from(keys)[0] as StatusFilter | undefined;
+            if (next) setStatusFilter(next);
+          }}
+          disallowEmptySelection
+          className="max-w-45"
+        >
+          <SelectItem key="all">All statuses</SelectItem>
+          <SelectItem key="pending">Pending</SelectItem>
+          <SelectItem key="confirmed">Confirmed</SelectItem>
+          <SelectItem key="completed">Completed</SelectItem>
+        </Select>
+        {filtersActive && (
+          <Button size="sm" variant="light" onPress={clearFilters}>
+            Clear filters
+          </Button>
+        )}
+      </div>
+
+      {!loading && !error && (
+        <p className="text-sm text-foreground/50 mb-3" style={{ fontFamily: "var(--font-mono)" }}>
+          {filtered.length} {filtered.length === 1 ? "order" : "orders"}
+        </p>
+      )}
 
       {!loading && !error && selectedOrders.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 bg-content1 rounded-lg px-4 py-3 mb-4 no-print">
@@ -201,7 +274,7 @@ export default function OrdersPage() {
         <>
           <OrdersList orders={paged} selectable selected={selectedIds} onToggle={toggleSelected} />
           <div className="mt-4">
-            <Pagination page={currentPage} pageSize={pageSize} total={orders.length} itemLabel="orders" onPageChange={setPage} />
+            <Pagination page={currentPage} pageSize={pageSize} total={filtered.length} itemLabel="orders" onPageChange={setPage} />
           </div>
         </>
       )}

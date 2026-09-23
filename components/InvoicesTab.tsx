@@ -37,10 +37,12 @@ type PaymentFilter = "all" | "due" | "paid";
 
 const PAYMENT_TYPE_OPTIONS = [{ key: "all", label: "All types" }, ...PAYMENT_TYPES.map((t) => ({ key: t, label: t }))];
 
+/** A fully completed order (work done + payment done) is never treated as having a due —
+ * regardless of what the raw total/advance numbers say. */
 function invoiceMoney(o: Order) {
   const total = parseFloat(o.invoice?.totalAmount || "0") || 0;
   const advance = parseFloat(o.invoice?.advancePaid || "0") || 0;
-  const due = Math.max(total - advance, 0);
+  const due = o.status === "completed" ? 0 : Math.max(total - advance, 0);
   return { total, advance, due };
 }
 

@@ -242,7 +242,7 @@ export async function generateInvoicePdf(order: Order, language: InvoiceLanguage
 
   const total = parseFloat(order.invoice.totalAmount || "0") || 0;
   const advance = parseFloat(order.invoice.advancePaid || "0") || 0;
-  const due = Math.max(total - advance, 0);
+  const due = order.status === "completed" ? 0 : Math.max(total - advance, 0);
 
   y = sectionTitle(doc, "Payment", y, COLORS.royal);
   y = writeLine(doc, "Total amount", `Rs. ${total.toLocaleString("en-IN")}`, MARGIN, y);
@@ -378,7 +378,7 @@ async function generateInvoicePdfTelugu(order: Order): Promise<void> {
 
   const total = parseFloat(order.invoice.totalAmount || "0") || 0;
   const advance = parseFloat(order.invoice.advancePaid || "0") || 0;
-  const due = Math.max(total - advance, 0);
+  const due = order.status === "completed" ? 0 : Math.max(total - advance, 0);
 
   y = sectionTitleTe(doc, LABELS_TE.payment, y, COLORS.royal);
   y = writeLineTe(doc, LABELS_TE.totalAmount, formatRupeesTe(total), MARGIN, y, true);
@@ -621,7 +621,7 @@ export async function generateCombinedOrdersPdf(orders: Order[], isOwner: boolea
     if (isOwner) {
       const total = parseFloat(order.invoice?.totalAmount || "0") || 0;
       const advance = parseFloat(order.invoice?.advancePaid || "0") || 0;
-      const due = Math.max(total - advance, 0);
+      const due = order.status === "completed" ? 0 : Math.max(total - advance, 0);
       py = sectionTitle(doc, "Payment", py, COLORS.royal);
       py = writeLine(doc, "Total amount", `Rs. ${total.toLocaleString("en-IN")}`, MARGIN, py);
       py = writeLine(doc, "Advance paid", `Rs. ${advance.toLocaleString("en-IN")}`, MARGIN, py);

@@ -27,7 +27,10 @@ function orderAdvance(o: Order): number {
   return parseFloat(o.invoice?.advancePaid || "0") || 0;
 }
 
+/** A fully completed order (work done + payment done) is never treated as having a due —
+ * regardless of what the raw total/advance numbers say. */
 function orderDue(o: Order): number {
+  if (o.status === "completed") return 0;
   return Math.max(orderTotal(o) - orderAdvance(o), 0);
 }
 

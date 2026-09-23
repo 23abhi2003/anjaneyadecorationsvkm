@@ -59,7 +59,6 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
 
   const total = parseFloat(invoice.totalAmount) || 0;
   const advance = parseFloat(invoice.advancePaid) || 0;
-  const due = Math.max(total - advance, 0);
   const investment = parseFloat(invoice.investment) || 0;
   const staffTotal = (order.staffAssigned || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
   const profit = total - staffTotal - investment;
@@ -71,6 +70,10 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
       : orderCompletion === "completed" || paymentCompletion === "completed" || order.status === "confirmed"
         ? "confirmed"
         : "pending";
+
+  // A fully completed order (work done + payment done) is never treated as having a due —
+  // regardless of what the raw total/advance numbers say.
+  const due = overallStatus === "completed" ? 0 : Math.max(total - advance, 0);
 
   async function onSave(): Promise<void> {
     setSaving(true);

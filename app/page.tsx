@@ -27,16 +27,6 @@ function programLabel(o: Order): string {
   return program?.type || o.serviceType;
 }
 
-/** Has the physical order (tent/decoration work) been marked done? Defaults to "pending", mirroring OrderDetailClient. */
-function isOrderDone(o: Order): boolean {
-  return (o.orderCompletionStatus || "pending") === "completed";
-}
-
-/** Has the invoice been paid in full? Defaults to "pending". */
-function isPaymentDone(o: Order): boolean {
-  return (o.paymentCompletionStatus || "pending") === "completed";
-}
-
 function orderTotal(o: Order): number {
   return parseFloat(o.invoice?.totalAmount || "0") || 0;
 }
@@ -45,12 +35,28 @@ function orderAdvance(o: Order): number {
   return parseFloat(o.invoice?.advancePaid || "0") || 0;
 }
 
+/** A fully completed order (work done + payment done) is never treated as having a due —
+ * regardless of what the raw total/advance numbers say. Mirrors InvoicesTab's invoiceMoney(). */
 function orderDue(o: Order): number {
+  if (o.status === "completed") return 0;
   return Math.max(orderTotal(o) - orderAdvance(o), 0);
 }
 
+/** Money a single order owes staff (sum of every staff member assigned to it). */
+function orderStaffAmount(o: Order): number {
+  return (o.staffAssigned || []).reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+}
+
+function orderInvestment(o: Order): number {
+  return parseFloat(o.invoice?.investment || "0") || 0;
+}
+
+function orderProfit(o: Order): number {
+  return orderTotal(o) - orderStaffAmount(o) - orderInvestment(o);
+}
+
 /** Which dashboard card is currently driving the "Total orders" list below. */
-type DashboardFilter = "collected" | "pending" | "progress" | null;
+type DashboardFilter = "amount" | "dues" | "staff" | "invested" | "profit" | null;
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -61,8 +67,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Clicking "Collected so far" or "Pending dues" filters + sorts the "Total
-  // orders" list below to just those orders, instead of navigating away.
+  // Clicking a financial-overview card filters + sorts the "Total orders"
+  // list below to just those orders, instead of navigating away.
   const [filter, setFilter] = useState<DashboardFilter>(null);
 
   useEffect(() => {
@@ -98,34 +104,46 @@ export default function HomePage() {
     };
   }, []);
 
-  // Fully done: order work finished AND the invoice fully paid.
-  const collectedOrders = useMemo(
-    () => orders.filter((o) => isOrderDone(o) && isPaymentDone(o)),
-    [orders]
-  );
-  const totalCollected = collectedOrders.reduce((sum, o) => sum + orderTotal(o), 0);
+  // Owner-facing totals across ALL orders — same calculation as the Invoices
+  // tab's summary row (total, dues, staff pay, invested, profit).
+  const totals = useMemo(() => {
+    return orders.reduce(
+      (acc, o) => {
+        acc.amount += orderTotal(o);
+        acc.dues += orderDue(o);
+        acc.staff += orderStaffAmount(o);
+        acc.invested += orderInvestment(o);
+        acc.profit += orderProfit(o);
+        return acc;
+      },
+      { amount: 0, dues: 0, staff: 0, invested: 0, profit: 0 }
+    );
+  }, [orders]);
 
-  // Order work is done, but the invoice still has money outstanding.
-  const pendingDueOrders = useMemo(
-    () => orders.filter((o) => isOrderDone(o) && !isPaymentDone(o)),
-    [orders]
-  );
-  const totalDue = pendingDueOrders.reduce((sum, o) => sum + orderDue(o), 0);
-
-  const pendingOrders = orders.filter((o) => o.status !== "completed").length;
+  const duesOrders = useMemo(() => orders.filter((o) => orderDue(o) > 0), [orders]);
+  const investedOrders = useMemo(() => orders.filter((o) => orderInvestment(o) > 0), [orders]);
 
   // The list the "Total orders" section actually renders: either the default
-  // 5 most-recent orders, or — when a money card is active — every matching
-  // order sorted by the amount that made it match (largest first).
+  // 5 most-recent orders, or — when a financial-overview card is active —
+  // every matching order sorted by the amount that made it match (largest first).
   const displayedOrders = useMemo(() => {
-    if (filter === "collected") {
-      return [...collectedOrders].sort((a, b) => orderTotal(b) - orderTotal(a));
+    if (filter === "amount") {
+      return [...orders].sort((a, b) => orderTotal(b) - orderTotal(a));
     }
-    if (filter === "pending") {
-      return [...pendingDueOrders].sort((a, b) => orderDue(b) - orderDue(a));
+    if (filter === "dues") {
+      return [...duesOrders].sort((a, b) => orderDue(b) - orderDue(a));
+    }
+    if (filter === "staff") {
+      return [...orders].sort((a, b) => orderStaffAmount(b) - orderStaffAmount(a));
+    }
+    if (filter === "invested") {
+      return [...investedOrders].sort((a, b) => orderInvestment(b) - orderInvestment(a));
+    }
+    if (filter === "profit") {
+      return [...orders].sort((a, b) => orderProfit(b) - orderProfit(a));
     }
     return orders.slice(0, 5);
-  }, [filter, collectedOrders, pendingDueOrders, orders]);
+  }, [filter, orders, duesOrders, investedOrders]);
 
   if (loading) {
     return (
@@ -146,11 +164,26 @@ export default function HomePage() {
     })
     .sort((a, b) => new Date(a.eventDate ?? 0).getTime() - new Date(b.eventDate ?? 0).getTime());
 
+  // Of the orders coming up in the next 3 days, how many still need to be done
+  // (work not marked completed yet).
+  const upcomingToDo = upcoming.filter((o) => o.status !== "completed").length;
+
   function toggleFilter(next: Exclude<DashboardFilter, null>): void {
     setFilter((cur) => (cur === next ? null : next));
   }
 
-  const totalOrdersTitle = filter === "collected" ? "Collected so far" : filter === "pending" ? "Pending dues" : "Total orders";
+  const totalOrdersTitle =
+    filter === "amount"
+      ? "Total amount"
+      : filter === "dues"
+        ? "Total dues"
+        : filter === "staff"
+          ? "Total staff pay"
+          : filter === "invested"
+            ? "Invested amount"
+            : filter === "profit"
+              ? "Total profit"
+              : "Total orders";
 
   return (
     <div className="space-y-10">
@@ -180,65 +213,116 @@ export default function HomePage() {
         <NavCard href="/staff" title="Staff" count={staff.length} sub="Assignments & pay" />
       </section>
 
-      <section className={`grid gap-4 ${isOwner ? "sm:grid-cols-3" : "sm:grid-cols-1"}`}>
-        {isOwner && (
+      {isOwner && (
+        <section className="grid sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card
             isPressable
             isHoverable
-            onPress={() => toggleFilter("collected")}
+            onPress={() => toggleFilter("amount")}
             className={`bg-content1 p-5 text-left shadow-lg transition-all ${
-              filter === "collected" ? "ring-2 ring-success" : ""
+              filter === "amount" ? "ring-2 ring-secondary" : ""
             }`}
           >
             <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-              Collected so far
+              Total amount
             </p>
-            <p className="text-2xl text-success mt-1" style={{ fontFamily: "var(--font-display)" }}>
-              ₹{totalCollected.toLocaleString("en-IN")}
+            <p className="text-2xl text-secondary mt-1" style={{ fontFamily: "var(--font-display)" }}>
+              ₹{totals.amount.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
-              {collectedOrders.length} order{collectedOrders.length === 1 ? "" : "s"} fully paid &middot; tap to view
+              {orders.length} order{orders.length === 1 ? "" : "s"} &middot; tap to view
             </p>
           </Card>
-        )}
-        {isOwner && (
           <Card
             isPressable
             isHoverable
-            onPress={() => toggleFilter("pending")}
+            onPress={() => toggleFilter("dues")}
             className={`bg-content1 p-5 text-left shadow-lg transition-all ${
-              filter === "pending" ? "ring-2 ring-warning" : ""
+              filter === "dues" ? "ring-2 ring-warning" : ""
             }`}
           >
             <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-              Pending dues
+              Total dues
             </p>
             <p className="text-2xl text-warning mt-1" style={{ fontFamily: "var(--font-display)" }}>
-              ₹{totalDue.toLocaleString("en-IN")}
+              ₹{totals.dues.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
-              {pendingDueOrders.length} order{pendingDueOrders.length === 1 ? "" : "s"} awaiting payment &middot; tap to view
+              {duesOrders.length} order{duesOrders.length === 1 ? "" : "s"} awaiting payment &middot; tap to view
             </p>
           </Card>
-        )}
-        <div className="bg-content1 rounded-lg p-5 shadow-lg">
-          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-            Orders in progress
-          </p>
-          <p className="text-2xl text-secondary mt-1" style={{ fontFamily: "var(--font-display)" }}>
-            {pendingOrders}
-          </p>
-        </div>
-      </section>
+          <Card
+            isPressable
+            isHoverable
+            onPress={() => toggleFilter("staff")}
+            className={`bg-content1 p-5 text-left shadow-lg transition-all ${
+              filter === "staff" ? "ring-2 ring-[#8B4A15]" : ""
+            }`}
+          >
+            <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+              Total staff pay
+            </p>
+            <p className="text-2xl mt-1" style={{ fontFamily: "var(--font-display)", color: "#8B4A15" }}>
+              ₹{totals.staff.toLocaleString("en-IN")}
+            </p>
+            <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+              Across all orders &middot; tap to view
+            </p>
+          </Card>
+          <Card
+            isPressable
+            isHoverable
+            onPress={() => toggleFilter("invested")}
+            className={`bg-content1 p-5 text-left shadow-lg transition-all ${
+              filter === "invested" ? "ring-2 ring-primary" : ""
+            }`}
+          >
+            <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+              Invested amount
+            </p>
+            <p className="text-2xl text-primary mt-1" style={{ fontFamily: "var(--font-display)" }}>
+              ₹{totals.invested.toLocaleString("en-IN")}
+            </p>
+            <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+              {investedOrders.length} order{investedOrders.length === 1 ? "" : "s"} &middot; tap to view
+            </p>
+          </Card>
+          <Card
+            isPressable
+            isHoverable
+            onPress={() => toggleFilter("profit")}
+            className={`bg-content1 p-5 text-left shadow-lg transition-all ${
+              filter === "profit" ? "ring-2 ring-success" : ""
+            }`}
+          >
+            <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+              Total profit
+            </p>
+            <p className={`text-2xl mt-1 ${totals.profit < 0 ? "text-danger" : "text-success"}`} style={{ fontFamily: "var(--font-display)" }}>
+              ₹{totals.profit.toLocaleString("en-IN")}
+            </p>
+            <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+              Total &minus; staff &minus; invested &middot; tap to view
+            </p>
+          </Card>
+        </section>
+      )}
 
       <section className="bg-content1 rounded-lg p-6 shadow-lg">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-foreground" style={{ fontFamily: "var(--font-display)" }}>
             Orders within 3 days
           </h2>
-          <Chip color="secondary" variant="flat" size="sm">
-            {upcoming.length} due soon
-          </Chip>
+          <div className="flex items-center gap-2">
+            <Chip color="secondary" variant="flat" size="sm">
+              {upcoming.length} due soon
+            </Chip>
+            {upcomingToDo > 0 && (
+              <Chip color="warning" variant="flat" size="sm">
+                {upcomingToDo} to be done
+              </Chip>
+            )}
+          </div>
         </div>
         {upcoming.length === 0 ? (
           <p className="text-sm text-foreground/60">Nothing due in the next 3 days.</p>
@@ -291,13 +375,28 @@ export default function HomePage() {
                 <span className="text-foreground/40 mr-1">{o.id}</span>
                 {o.customer?.name}
               </span>
-              {filter === "collected" ? (
-                <span className="text-xs text-success" style={{ fontFamily: "var(--font-mono)" }}>
-                  ₹{orderTotal(o).toLocaleString("en-IN")} collected
+              {filter === "amount" ? (
+                <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
+                  ₹{orderTotal(o).toLocaleString("en-IN")} total
                 </span>
-              ) : filter === "pending" ? (
+              ) : filter === "dues" ? (
                 <span className="text-xs text-warning" style={{ fontFamily: "var(--font-mono)" }}>
                   ₹{orderDue(o).toLocaleString("en-IN")} due
+                </span>
+              ) : filter === "staff" ? (
+                <span className="text-xs" style={{ fontFamily: "var(--font-mono)", color: "#8B4A15" }}>
+                  ₹{orderStaffAmount(o).toLocaleString("en-IN")} staff
+                </span>
+              ) : filter === "invested" ? (
+                <span className="text-xs text-primary" style={{ fontFamily: "var(--font-mono)" }}>
+                  ₹{orderInvestment(o).toLocaleString("en-IN")} invested
+                </span>
+              ) : filter === "profit" ? (
+                <span
+                  className={`text-xs ${orderProfit(o) < 0 ? "text-danger" : "text-success"}`}
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  ₹{orderProfit(o).toLocaleString("en-IN")} profit
                 </span>
               ) : (
                 <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
@@ -308,7 +407,11 @@ export default function HomePage() {
           ))}
           {displayedOrders.length === 0 && (
             <p className="text-sm text-foreground/60 py-4 text-center">
-              {filter === "collected" ? "No fully-paid orders yet." : filter === "pending" ? "No pending dues right now." : "No orders yet."}
+              {filter === "dues"
+                ? "No pending dues right now."
+                : filter === "invested"
+                  ? "No invested amount recorded yet."
+                  : "No orders yet."}
             </p>
           )}
         </div>

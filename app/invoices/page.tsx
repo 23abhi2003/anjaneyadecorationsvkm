@@ -5,13 +5,14 @@ import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import InvoicesTab from "@/components/InvoicesTab";
-import type { Order } from "@/lib/types";
+import type { Investment, Order } from "@/lib/types";
 
 export default function InvoicesPage() {
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
 
   const [orders, setOrders] = useState<Order[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -21,13 +22,21 @@ export default function InvoicesPage() {
       return;
     }
     let cancelled = false;
-    apiFetch("/api/orders")
-      .then((res) => {
+    Promise.all([
+      apiFetch("/api/orders").then((res) => {
         if (!res.ok) throw new Error("failed");
         return res.json() as Promise<Order[]>;
-      })
-      .then((data) => {
-        if (!cancelled) setOrders(data);
+      }),
+      apiFetch("/api/investments").then((res) => {
+        if (!res.ok) throw new Error("failed");
+        return res.json() as Promise<Investment[]>;
+      }),
+    ])
+      .then(([ordersData, investmentsData]) => {
+        if (!cancelled) {
+          setOrders(ordersData);
+          setInvestments(investmentsData);
+        }
       })
       .catch(() => {
         if (!cancelled) setError("Could not load invoices. Is the API reachable?");
@@ -56,7 +65,7 @@ export default function InvoicesPage() {
 
       {isOwner && !loading && error && <p className="text-center text-danger py-10">{error}</p>}
 
-      {isOwner && !loading && !error && <InvoicesTab orders={orders} />}
+      {isOwner && !loading && !error && <InvoicesTab orders={orders} investments={investments} />}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import DashboardSearch from "@/components/DashboardSearch";
 import NavCard from "@/components/NavCard";
 import { useAuth } from "@/lib/Auth";
-import type { Order, Customer, StaffMember } from "@/lib/types";
+import type { Order, Customer, StaffMember, Investment } from "@/lib/types";
 
 function daysUntil(dateStr: string | null): number {
   if (!dateStr) return Infinity;
@@ -64,6 +64,7 @@ export default function HomePage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -77,21 +78,24 @@ export default function HomePage() {
       setLoading(true);
       setError("");
       try {
-        const [ordersRes, customersRes, staffRes] = await Promise.all([
+        const [ordersRes, customersRes, staffRes, investmentsRes] = await Promise.all([
           apiFetch("/api/orders"),
           apiFetch("/api/customers"),
           apiFetch("/api/staff"),
+          apiFetch("/api/investments"),
         ]);
-        if (!ordersRes.ok || !customersRes.ok || !staffRes.ok) throw new Error("failed");
-        const [ordersData, customersData, staffData] = await Promise.all([
+        if (!ordersRes.ok || !customersRes.ok || !staffRes.ok || !investmentsRes.ok) throw new Error("failed");
+        const [ordersData, customersData, staffData, investmentsData] = await Promise.all([
           ordersRes.json() as Promise<Order[]>,
           customersRes.json() as Promise<Customer[]>,
           staffRes.json() as Promise<StaffMember[]>,
+          investmentsRes.json() as Promise<Investment[]>,
         ]);
         if (cancelled) return;
         setOrders(ordersData);
         setCustomers(customersData);
         setStaff(staffData);
+        setInvestments(investmentsData);
       } catch {
         if (!cancelled) setError("Could not load the dashboard. Is the API reachable?");
       } finally {
@@ -104,10 +108,17 @@ export default function HomePage() {
     };
   }, []);
 
+  // All business-wide investments (from the Investments page) — not tied to any single
+  // order, so they sit outside the per-order reduce below but still come out of profit.
+  const totalBusinessInvestment = useMemo(
+    () => investments.reduce((sum, i) => sum + (parseFloat(i.amount || "0") || 0), 0),
+    [investments]
+  );
+
   // Owner-facing totals across ALL orders — same calculation as the Invoices
   // tab's summary row (total, dues, staff pay, invested, profit).
   const totals = useMemo(() => {
-    return orders.reduce(
+    const base = orders.reduce(
       (acc, o) => {
         acc.amount += orderTotal(o);
         acc.dues += orderDue(o);
@@ -118,7 +129,10 @@ export default function HomePage() {
       },
       { amount: 0, dues: 0, staff: 0, invested: 0, profit: 0 }
     );
-  }, [orders]);
+    // Business-wide investments (decoration, tenthouse, lighting, etc. logged on the
+    // Investments page) also come out of profit, on top of any per-order investment above.
+    return { ...base, profit: base.profit - totalBusinessInvestment };
+  }, [orders, totalBusinessInvestment]);
 
   const duesOrders = useMemo(() => orders.filter((o) => orderDue(o) > 0), [orders]);
   const investedOrders = useMemo(() => orders.filter((o) => orderInvestment(o) > 0), [orders]);
@@ -214,7 +228,7 @@ export default function HomePage() {
       </section>
 
       {isOwner && (
-        <section className="grid sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <section className="grid sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card
             isPressable
             isHoverable
@@ -288,6 +302,23 @@ export default function HomePage() {
             </p>
           </Card>
           <Card
+            as={Link}
+            href="/investments"
+            isPressable
+            isHoverable
+            className="bg-content1 p-5 text-left shadow-lg transition-all"
+          >
+            <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+              Business investments
+            </p>
+            <p className="text-2xl mt-1 text-secondary" style={{ fontFamily: "var(--font-display)" }}>
+              ₹{totalBusinessInvestment.toLocaleString("en-IN")}
+            </p>
+            <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+              {investments.length} {investments.length === 1 ? "entry" : "entries"} &middot; view Investments
+            </p>
+          </Card>
+          <Card
             isPressable
             isHoverable
             onPress={() => toggleFilter("profit")}
@@ -302,7 +333,7 @@ export default function HomePage() {
               ₹{totals.profit.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-foreground/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
-              Total &minus; staff &minus; invested &middot; tap to view
+              Total &minus; staff &minus; invested &minus; business &middot; tap to view
             </p>
           </Card>
         </section>

@@ -22,7 +22,7 @@ import { LayoutGrid, List as ListIcon, Search } from "lucide-react";
 import type { DateValue } from "@react-types/datepicker";
 import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { Investment, InvestmentCategory, Order, OrderStatus } from "@/lib/types";
 import { PAYMENT_TYPES } from "@/lib/catalog";
 import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
@@ -31,6 +31,16 @@ const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
   confirmed: "success",
   completed: "secondary",
+};
+
+const INVESTMENT_CATEGORY_LABELS: Record<InvestmentCategory, string> = {
+  decoration: "Decoration",
+  tenthouse: "Tenthouse",
+  lighting: "Lighting",
+  dj: "DJ",
+  food: "Food",
+  flowers: "Flowers",
+  others: "Others",
 };
 
 type PaymentFilter = "all" | "due" | "paid";
@@ -81,7 +91,7 @@ function matchesSearch(o: Order, query: string): boolean {
   return haystacks.some((h) => h.toLowerCase().includes(q));
 }
 
-export default function InvoicesTab({ orders }: { orders: Order[] }) {
+export default function InvoicesTab({ orders, investments = [] }: { orders: Order[]; investments?: Investment[] }) {
   // Opening Invoices goes straight to grid view.
   const [view, setView] = useState<"list" | "grid">("grid");
   const [search, setSearch] = useState("");
@@ -127,22 +137,37 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
       });
   }, [orders, search, statusFilter, paymentFilter, paymentTypeFilter, range]);
 
+  // Investments (from the Investments page) that fall inside the same event-date range
+  // filter applied to the invoices above — so the two pages agree on what "this period" means.
+  const filteredInvestments = useMemo(
+    () => investments.filter((i) => withinRange(i.date, range)),
+    [investments, range]
+  );
+
+  const totalInvestments = useMemo(
+    () => filteredInvestments.reduce((sum, i) => sum + (parseFloat(i.amount || "0") || 0), 0),
+    [filteredInvestments]
+  );
+
   /** Owner-facing totals across the currently filtered invoices: amount, dues, staff pay, and net profit. */
   const summary = useMemo(() => {
-    return rows.reduce(
+    const base = rows.reduce(
       (acc, o) => {
         const { total, due } = invoiceMoney(o);
         const staffAmount = orderStaffAmount(o);
-        const investment = parseFloat(o.invoice?.investment || "0") || 0;
+        const orderInvestment = parseFloat(o.invoice?.investment || "0") || 0;
         acc.total += total;
         acc.due += due;
         acc.staff += staffAmount;
-        acc.profit += total - staffAmount - investment;
+        acc.profit += total - staffAmount - orderInvestment;
         return acc;
       },
       { total: 0, due: 0, staff: 0, profit: 0 }
     );
-  }, [rows]);
+    // Business-wide investments (decoration, tenthouse, lighting, etc.) also come out of profit,
+    // on top of whatever was already logged against individual orders above.
+    return { ...base, profit: base.profit - totalInvestments };
+  }, [rows, totalInvestments]);
 
   const currentPage = clampPage(page, rows.length, pageSize);
   const paged = useMemo(() => paginate(rows, currentPage, pageSize), [rows, currentPage, pageSize]);
@@ -351,7 +376,7 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
 
       <Pagination page={currentPage} pageSize={pageSize} total={rows.length} itemLabel="invoices" onPageChange={setPage} />
 
-      <div className="grid sm:grid-cols-4 gap-4 pt-2">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-2">
         <div className="bg-content1 rounded-lg p-5 shadow-lg">
           <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
             Total amount
@@ -378,13 +403,57 @@ export default function InvoicesTab({ orders }: { orders: Order[] }) {
         </div>
         <div className="bg-content1 rounded-lg p-5 shadow-lg">
           <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+            Investments
+          </p>
+          <p className="text-2xl mt-1 text-secondary" style={{ fontFamily: "var(--font-display)" }}>
+            {inr(totalInvestments)}
+          </p>
+          <p className="text-[11px] text-foreground/40 mt-0.5">
+            {range ? "in selected date range" : "all recorded investments"}
+          </p>
+        </div>
+        <div className="bg-content1 rounded-lg p-5 shadow-lg">
+          <p className="text-xs uppercase tracking-wide text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
             Total profit
           </p>
           <p className={`text-2xl mt-1 ${summary.profit < 0 ? "text-danger" : "text-success"}`} style={{ fontFamily: "var(--font-display)" }}>
             {inr(summary.profit)}
           </p>
+          <p className="text-[11px] text-foreground/40 mt-0.5">after staff pay &amp; investments</p>
         </div>
       </div>
+
+      {filteredInvestments.length > 0 && (
+        <div className="bg-content1 rounded-lg p-4 mt-4">
+          <p className="text-xs uppercase tracking-wide text-foreground/50 mb-3" style={{ fontFamily: "var(--font-mono)" }}>
+            Investments in this period ({filteredInvestments.length})
+          </p>
+          <div className="overflow-x-auto">
+            <Table removeWrapper aria-label="Investments in period" className="min-w-[480px]">
+              <TableHeader>
+                <TableColumn>INVESTED IN</TableColumn>
+                <TableColumn>CATEGORY</TableColumn>
+                <TableColumn>DATE</TableColumn>
+                <TableColumn>AMOUNT</TableColumn>
+              </TableHeader>
+              <TableBody>
+                {filteredInvestments.map((i) => (
+                  <TableRow key={i.id}>
+                    <TableCell className="font-medium">{i.name}</TableCell>
+                    <TableCell>
+                      <Chip size="sm" variant="flat">
+                        {INVESTMENT_CATEGORY_LABELS[i.category] || i.category}
+                      </Chip>
+                    </TableCell>
+                    <TableCell>{i.date || "—"}</TableCell>
+                    <TableCell>{inr(parseFloat(i.amount || "0") || 0)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

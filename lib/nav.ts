@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, ClipboardList, Users, HardHat, PlusCircle, Receipt, BarChart3, TrendingUp } from "lucide-react";
+import { LayoutDashboard, ClipboardList, Users, HardHat, PlusCircle, Receipt, BarChart3, TrendingUp, Wallet } from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Staff", href: "/staff", icon: HardHat },
   { label: "Invoices", href: "/invoices", icon: Receipt, ownerOnly: true },
+  { label: "Investments", href: "/investments", icon: Wallet, ownerOnly: true },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Staff Analytics", href: "/staff-analytics", icon: TrendingUp, ownerOnly: true },
 ];

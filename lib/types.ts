@@ -182,6 +182,31 @@ export interface StaffAssignmentRecord {
   payments?: StaffPayment[];
 }
 
+/** What an investment (business spend) was made toward. */
+export type InvestmentCategory = "decoration" | "tenthouse" | "lighting" | "dj" | "food" | "flowers" | "others";
+
+export const INVESTMENT_CATEGORIES: InvestmentCategory[] = [
+  "decoration",
+  "tenthouse",
+  "lighting",
+  "dj",
+  "food",
+  "flowers",
+  "others",
+];
+
+export interface Investment {
+  id: string;
+  /** Free-text description of what was invested in, e.g. "New DJ speakers". */
+  name: string;
+  category: InvestmentCategory;
+  /** Rupees, as a string (like every other amount in the app). */
+  amount: string;
+  /** YYYY-MM-DD — the day the money was spent. */
+  date: string;
+  createdAt?: string;
+}
+
 export interface StaffMember {
   id: string;
   name: string;

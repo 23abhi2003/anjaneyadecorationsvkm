@@ -82,14 +82,19 @@ export default function HomePage() {
           apiFetch("/api/orders"),
           apiFetch("/api/customers"),
           apiFetch("/api/staff"),
-          apiFetch("/api/investments"),
+          // Investments are owner-only on the backend — a staff login gets a 403 here,
+          // which (being inside the same Promise.all) used to sink the whole dashboard
+          // load. Only fetch it for owners; staff just see 0 invested below.
+          isOwner ? apiFetch("/api/investments") : Promise.resolve(null),
         ]);
-        if (!ordersRes.ok || !customersRes.ok || !staffRes.ok || !investmentsRes.ok) throw new Error("failed");
+        if (!ordersRes.ok || !customersRes.ok || !staffRes.ok || (investmentsRes && !investmentsRes.ok)) {
+          throw new Error("failed");
+        }
         const [ordersData, customersData, staffData, investmentsData] = await Promise.all([
           ordersRes.json() as Promise<Order[]>,
           customersRes.json() as Promise<Customer[]>,
           staffRes.json() as Promise<StaffMember[]>,
-          investmentsRes.json() as Promise<Investment[]>,
+          investmentsRes ? (investmentsRes.json() as Promise<Investment[]>) : Promise.resolve([]),
         ]);
         if (cancelled) return;
         setOrders(ordersData);
@@ -106,7 +111,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isOwner]);
 
   // All business-wide investments (from the Investments page) — not tied to any single
   // order, so they sit outside the per-order reduce below but still come out of profit.

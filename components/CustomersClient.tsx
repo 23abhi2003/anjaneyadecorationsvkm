@@ -28,7 +28,7 @@ import { withOrderCounts, type CustomerWithCount } from "@/lib/customer";
 import type { Customer, CustomerType, Order } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import Pagination from "@/components/Pagination";
+import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 const POLL_INTERVAL_MS = 15000; // refetch customers every 15s to reflect newly placed orders

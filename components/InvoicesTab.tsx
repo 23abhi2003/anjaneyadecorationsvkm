@@ -24,7 +24,7 @@ import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
 import type { Order, OrderStatus } from "@/lib/types";
 import { PAYMENT_TYPES } from "@/lib/catalog";
-import Pagination from "@/components/Pagination";
+import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {

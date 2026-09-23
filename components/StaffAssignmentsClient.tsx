@@ -35,7 +35,7 @@ import {
 } from "@/lib/staffPay";
 import StaffPaymentsModal from "@/components/StaffPaymentsModal";
 import StaffBorrowsPanel from "@/components/StaffBorrowsPanel";
-import Pagination from "@/components/Pagination";
+import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 
 /** Parses an order/assignment date string (YYYY-MM-DD) into a comparable Date, tolerating blanks. */

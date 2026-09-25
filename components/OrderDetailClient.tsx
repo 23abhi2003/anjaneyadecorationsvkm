@@ -50,6 +50,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   });
   const [notes, setNotes] = useState(order.notes || "");
   const [returnedItems, setReturnedItems] = useState<Record<string, boolean>>(order.returnedItems || {});
+  const [returnedItemQtys, setReturnedItemQtys] = useState<Record<string, number>>(order.returnedItemQtys || {});
   const [itemReturnNotes, setItemReturnNotes] = useState(order.itemReturnNotes || "");
   const [itemFilter, setItemFilter] = useState<"all" | "remaining" | "returned">("all");
   const [saving, setSaving] = useState(false);
@@ -85,6 +86,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
       orderCompletionStatus: orderCompletion,
       notes,
       returnedItems,
+      returnedItemQtys,
       itemReturnNotes,
       ...(isOwner
         ? {
@@ -248,6 +250,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   const itemGroups = collectItemLines(order);
   const mapsLink = mapsLinkForOrder(order);
 
+  /** Parses "Label: qty" format — label is everything before the last colon, qty is the number after. */
   function parseItemLine(line: string): { label: string; qty: string } {
     const lastColon = line.lastIndexOf(":");
     if (lastColon !== -1) {
@@ -259,54 +262,113 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     return { label: line, qty: "" };
   }
 
-  function isItemReturned(line: string, index: number): boolean {
+  /** Parses qty string to a number (e.g. "2" → 2). Returns 1 if not a valid number. */
+  function getItemTotalQty(qty: string): number {
+    const n = parseInt(qty, 10);
+    return isNaN(n) || n <= 0 ? 1 : n;
+  }
+
+  /** Returns how many of this item have been marked as returned (0 if none). */
+  function getReturnedQty(line: string, index: number): number {
     const keyWithIndex = `${index}::${line}`;
-    if (returnedItems[keyWithIndex] !== undefined) {
-      return !!returnedItems[keyWithIndex];
+    if (returnedItemQtys[keyWithIndex] !== undefined) return returnedItemQtys[keyWithIndex];
+    if (returnedItemQtys[line] !== undefined) return returnedItemQtys[line];
+    // Legacy: if returnedItems is true but no qty saved, assume full qty returned.
+    if (isItemFullyReturned(line, index)) {
+      const { qty } = parseItemLine(line);
+      return getItemTotalQty(qty);
     }
-    if (returnedItems[line] !== undefined) {
-      return !!returnedItems[line];
-    }
+    return 0;
+  }
+
+  /** True only if all units of this item have been returned. */
+  function isItemFullyReturned(line: string, index: number): boolean {
+    const keyWithIndex = `${index}::${line}`;
+    if (returnedItems[keyWithIndex] !== undefined) return !!returnedItems[keyWithIndex];
+    if (returnedItems[line] !== undefined) return !!returnedItems[line];
     return false;
   }
 
-  function toggleItemReturn(line: string, index: number): void {
+  /** True if at least 1 unit is returned (partial counts). Used for filter. */
+  function isItemReturned(line: string, index: number): boolean {
+    return isItemFullyReturned(line, index) || getReturnedQty(line, index) > 0;
+  }
+
+  /** Sets the returned qty for an item and auto-marks full/partial return boolean. */
+  function setReturnedQty(line: string, index: number, qty: string, totalQty: number): void {
     const keyWithIndex = `${index}::${line}`;
-    const nextState = !isItemReturned(line, index);
+    const returned = Math.max(0, Math.min(parseInt(qty, 10) || 0, totalQty));
+    const isFull = returned >= totalQty;
+    setReturnedItemQtys((prev) => ({
+      ...prev,
+      [keyWithIndex]: returned,
+      [line]: returned,
+    }));
     setReturnedItems((prev) => ({
       ...prev,
-      [keyWithIndex]: nextState,
-      [line]: nextState,
+      [keyWithIndex]: isFull,
+      [line]: isFull,
+    }));
+  }
+
+  /** Toggle checkbox: if item has qty>1, toggle between 0 and full qty. */
+  function toggleItemReturn(line: string, index: number): void {
+    const { qty } = parseItemLine(line);
+    const totalQty = getItemTotalQty(qty);
+    const currentQty = getReturnedQty(line, index);
+    const nextFull = currentQty < totalQty;
+    const nextQty = nextFull ? totalQty : 0;
+    const keyWithIndex = `${index}::${line}`;
+    setReturnedItemQtys((prev) => ({
+      ...prev,
+      [keyWithIndex]: nextQty,
+      [line]: nextQty,
+    }));
+    setReturnedItems((prev) => ({
+      ...prev,
+      [keyWithIndex]: nextFull,
+      [line]: nextFull,
     }));
   }
 
   function markAllReturned(): void {
-    const updated: Record<string, boolean> = { ...returnedItems };
+    const updatedBool: Record<string, boolean> = { ...returnedItems };
+    const updatedQtys: Record<string, number> = { ...returnedItemQtys };
     itemGroups.forEach((line, index) => {
-      updated[`${index}::${line}`] = true;
-      updated[line] = true;
+      const { qty } = parseItemLine(line);
+      const totalQty = getItemTotalQty(qty);
+      updatedBool[`${index}::${line}`] = true;
+      updatedBool[line] = true;
+      updatedQtys[`${index}::${line}`] = totalQty;
+      updatedQtys[line] = totalQty;
     });
-    setReturnedItems(updated);
+    setReturnedItems(updatedBool);
+    setReturnedItemQtys(updatedQtys);
   }
 
   function uncheckAllReturned(): void {
-    const updated: Record<string, boolean> = { ...returnedItems };
+    const updatedBool: Record<string, boolean> = { ...returnedItems };
+    const updatedQtys: Record<string, number> = { ...returnedItemQtys };
     itemGroups.forEach((line, index) => {
-      updated[`${index}::${line}`] = false;
-      updated[line] = false;
+      updatedBool[`${index}::${line}`] = false;
+      updatedBool[line] = false;
+      updatedQtys[`${index}::${line}`] = 0;
+      updatedQtys[line] = 0;
     });
-    setReturnedItems(updated);
+    setReturnedItems(updatedBool);
+    setReturnedItemQtys(updatedQtys);
   }
 
-  const returnedCount = itemGroups.filter((line, i) => isItemReturned(line, i)).length;
+  // Count items as "returned" only when fully returned (all qty back).
+  const returnedCount = itemGroups.filter((line, i) => isItemFullyReturned(line, i)).length;
   const remainingCount = itemGroups.length - returnedCount;
   const allReturned = itemGroups.length > 0 && remainingCount === 0;
 
   const displayedItems = itemGroups
     .map((line, index) => ({ line, index }))
     .filter(({ line, index }) => {
-      if (itemFilter === "remaining") return !isItemReturned(line, index);
-      if (itemFilter === "returned") return isItemReturned(line, index);
+      if (itemFilter === "remaining") return !isItemFullyReturned(line, index);
+      if (itemFilter === "returned") return isItemFullyReturned(line, index);
       return true;
     });
 
@@ -536,21 +598,30 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
                   </div>
                 ) : (
                   displayedItems.map(({ line, index }) => {
-                    const isChecked = isItemReturned(line, index);
+                    const isChecked = isItemFullyReturned(line, index);
                     const { label, qty } = parseItemLine(line);
+                    const totalQty = getItemTotalQty(qty);
+                    const returnedQty = getReturnedQty(line, index);
+                    const isMultiQty = totalQty > 1;
+                    const isPartial = returnedQty > 0 && returnedQty < totalQty;
                     return (
                       <div
                         key={index}
-                        onClick={() => toggleItemReturn(line, index)}
-                        className={`flex items-center justify-between px-3.5 py-2.5 cursor-pointer transition-colors select-none ${
+                        className={`flex items-center justify-between px-3.5 py-2.5 transition-colors ${
                           isChecked
-                            ? "bg-success/5 hover:bg-success/10 text-foreground/80"
-                            : "bg-transparent hover:bg-content3/50 text-foreground"
+                            ? "bg-success/5 text-foreground/80"
+                            : isPartial
+                              ? "bg-warning/5 text-foreground"
+                              : "bg-transparent text-foreground"
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0 pr-2">
+                        <div
+                          className="flex items-center gap-3 min-w-0 pr-2 cursor-pointer select-none flex-1"
+                          onClick={() => toggleItemReturn(line, index)}
+                        >
                           <Checkbox
                             isSelected={isChecked}
+                            isIndeterminate={isPartial}
                             onValueChange={() => toggleItemReturn(line, index)}
                             color="success"
                             size="md"
@@ -570,23 +641,59 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {qty && (
+                          {isMultiQty ? (
+                            /* Qty stepper for items with qty > 1 */
+                            <div
+                              className="flex items-center gap-1.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                aria-label="Decrease returned qty"
+                                disabled={returnedQty <= 0}
+                                onClick={() => setReturnedQty(line, index, String(returnedQty - 1), totalQty)}
+                                className="w-6 h-6 rounded-full border border-content3 flex items-center justify-center text-sm font-bold text-foreground/70 hover:bg-content3 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                −
+                              </button>
+                              <span
+                                className={`text-xs font-mono font-semibold min-w-[52px] text-center ${
+                                  isChecked
+                                    ? "text-success"
+                                    : isPartial
+                                      ? "text-warning"
+                                      : "text-foreground/60"
+                                }`}
+                              >
+                                {returnedQty}/{totalQty}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label="Increase returned qty"
+                                disabled={returnedQty >= totalQty}
+                                onClick={() => setReturnedQty(line, index, String(returnedQty + 1), totalQty)}
+                                className="w-6 h-6 rounded-full border border-content3 flex items-center justify-center text-sm font-bold text-foreground/70 hover:bg-content3 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                +
+                              </button>
+                            </div>
+                          ) : (
                             <Chip
                               size="sm"
                               variant="flat"
                               color={isChecked ? "success" : "default"}
                               className="text-xs h-5 px-1.5 font-mono"
                             >
-                              Qty: {qty}
+                              Qty: {totalQty}
                             </Chip>
                           )}
                           <Chip
                             size="sm"
                             variant="flat"
-                            color={isChecked ? "success" : "warning"}
+                            color={isChecked ? "success" : isPartial ? "warning" : "danger"}
                             className="text-[11px] h-5 hidden sm:inline-flex"
                           >
-                            {isChecked ? "Returned" : "Pending return"}
+                            {isChecked ? "All returned" : isPartial ? `${totalQty - returnedQty} left` : "Not returned"}
                           </Chip>
                         </div>
                       </div>

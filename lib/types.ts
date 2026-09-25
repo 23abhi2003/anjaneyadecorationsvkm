@@ -170,6 +170,8 @@ export interface Order {
   notes?: string;
   /** Items returned to the shop after the event (final check). Keyed by item string or index::string */
   returnedItems?: Record<string, boolean>;
+  /** Exact returned quantity per item line or index::line. e.g. { "Jugs: 2": 1 } */
+  returnedItemQtys?: Record<string, number>;
   /** Note for item return check: missing items, damages, or items left behind to bring again */
   itemReturnNotes?: string;
 }

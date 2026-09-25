@@ -10,6 +10,7 @@ import {
   Input,
   Button,
   Chip,
+  Checkbox,
   Select,
   SelectItem,
   Textarea,
@@ -48,6 +49,9 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     investment: order.invoice?.investment || "",
   });
   const [notes, setNotes] = useState(order.notes || "");
+  const [returnedItems, setReturnedItems] = useState<Record<string, boolean>>(order.returnedItems || {});
+  const [itemReturnNotes, setItemReturnNotes] = useState(order.itemReturnNotes || "");
+  const [itemFilter, setItemFilter] = useState<"all" | "remaining" | "returned">("all");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [pdfBusy, setPdfBusy] = useState<"invoice" | "report" | null>(null);
@@ -80,6 +84,8 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     const payload: Partial<Order> = {
       orderCompletionStatus: orderCompletion,
       notes,
+      returnedItems,
+      itemReturnNotes,
       ...(isOwner
         ? {
             paymentCompletionStatus: paymentCompletion,
@@ -242,6 +248,68 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   const itemGroups = collectItemLines(order);
   const mapsLink = mapsLinkForOrder(order);
 
+  function parseItemLine(line: string): { label: string; qty: string } {
+    const lastColon = line.lastIndexOf(":");
+    if (lastColon !== -1) {
+      return {
+        label: line.slice(0, lastColon).trim(),
+        qty: line.slice(lastColon + 1).trim(),
+      };
+    }
+    return { label: line, qty: "" };
+  }
+
+  function isItemReturned(line: string, index: number): boolean {
+    const keyWithIndex = `${index}::${line}`;
+    if (returnedItems[keyWithIndex] !== undefined) {
+      return !!returnedItems[keyWithIndex];
+    }
+    if (returnedItems[line] !== undefined) {
+      return !!returnedItems[line];
+    }
+    return false;
+  }
+
+  function toggleItemReturn(line: string, index: number): void {
+    const keyWithIndex = `${index}::${line}`;
+    const nextState = !isItemReturned(line, index);
+    setReturnedItems((prev) => ({
+      ...prev,
+      [keyWithIndex]: nextState,
+      [line]: nextState,
+    }));
+  }
+
+  function markAllReturned(): void {
+    const updated: Record<string, boolean> = { ...returnedItems };
+    itemGroups.forEach((line, index) => {
+      updated[`${index}::${line}`] = true;
+      updated[line] = true;
+    });
+    setReturnedItems(updated);
+  }
+
+  function uncheckAllReturned(): void {
+    const updated: Record<string, boolean> = { ...returnedItems };
+    itemGroups.forEach((line, index) => {
+      updated[`${index}::${line}`] = false;
+      updated[line] = false;
+    });
+    setReturnedItems(updated);
+  }
+
+  const returnedCount = itemGroups.filter((line, i) => isItemReturned(line, i)).length;
+  const remainingCount = itemGroups.length - returnedCount;
+  const allReturned = itemGroups.length > 0 && remainingCount === 0;
+
+  const displayedItems = itemGroups
+    .map((line, index) => ({ line, index }))
+    .filter(({ line, index }) => {
+      if (itemFilter === "remaining") return !isItemReturned(line, index);
+      if (itemFilter === "returned") return isItemReturned(line, index);
+      return true;
+    });
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -374,15 +442,211 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
           <Divider />
 
           {itemGroups.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-2" style={{ fontFamily: "var(--font-display)" }}>
-                Items
-              </h2>
-              <ul className="text-sm text-foreground/80 space-y-1 list-disc list-inside">
-                {itemGroups.map((line, i) => (
-                  <li key={i}>{line}</li>
-                ))}
-              </ul>
+            <div className="space-y-4">
+              {/* Section Header & Return Stats */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                      Items & Final Return Check
+                    </h2>
+                    <Chip
+                      size="sm"
+                      variant="flat"
+                      color={allReturned ? "success" : returnedCount > 0 ? "warning" : "default"}
+                      className="font-medium"
+                    >
+                      {allReturned
+                        ? `All items returned to shop (${itemGroups.length}/${itemGroups.length})`
+                        : returnedCount > 0
+                          ? `${returnedCount} returned · ${remainingCount} remaining`
+                          : `Return check pending (0/${itemGroups.length})`}
+                    </Chip>
+                  </div>
+                  <p className="text-xs text-foreground/50 mt-0.5" style={{ fontFamily: "var(--font-mono)" }}>
+                    Check off each item as it reaches the shop from the venue. Accessible to both staff & owner.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 no-print">
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="success"
+                    radius="sm"
+                    onPress={markAllReturned}
+                    className="font-medium text-xs h-8"
+                  >
+                    Check all returned ✓
+                  </Button>
+                  {returnedCount > 0 && (
+                    <Button
+                      size="sm"
+                      variant="light"
+                      color="default"
+                      radius="sm"
+                      onPress={uncheckAllReturned}
+                      className="text-xs h-8 text-foreground/60"
+                    >
+                      Reset all
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1.5 pt-1 no-print">
+                <Button
+                  size="sm"
+                  radius="full"
+                  variant={itemFilter === "all" ? "solid" : "bordered"}
+                  color={itemFilter === "all" ? "primary" : "default"}
+                  className="h-7 text-xs"
+                  onPress={() => setItemFilter("all")}
+                >
+                  All ({itemGroups.length})
+                </Button>
+                <Button
+                  size="sm"
+                  radius="full"
+                  variant={itemFilter === "remaining" ? "solid" : "bordered"}
+                  color={itemFilter === "remaining" ? "warning" : "default"}
+                  className="h-7 text-xs"
+                  onPress={() => setItemFilter("remaining")}
+                >
+                  Remaining to bring ({remainingCount})
+                </Button>
+                <Button
+                  size="sm"
+                  radius="full"
+                  variant={itemFilter === "returned" ? "solid" : "bordered"}
+                  color={itemFilter === "returned" ? "success" : "default"}
+                  className="h-7 text-xs"
+                  onPress={() => setItemFilter("returned")}
+                >
+                  Returned ({returnedCount})
+                </Button>
+              </div>
+
+              {/* Interactive Item Checklist */}
+              <div className="divide-y divide-content3 border border-content3 rounded-lg overflow-hidden bg-content2/30">
+                {displayedItems.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-foreground/50">
+                    No items in this filter view.
+                  </div>
+                ) : (
+                  displayedItems.map(({ line, index }) => {
+                    const isChecked = isItemReturned(line, index);
+                    const { label, qty } = parseItemLine(line);
+                    return (
+                      <div
+                        key={index}
+                        onClick={() => toggleItemReturn(line, index)}
+                        className={`flex items-center justify-between px-3.5 py-2.5 cursor-pointer transition-colors select-none ${
+                          isChecked
+                            ? "bg-success/5 hover:bg-success/10 text-foreground/80"
+                            : "bg-transparent hover:bg-content3/50 text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 pr-2">
+                          <Checkbox
+                            isSelected={isChecked}
+                            onValueChange={() => toggleItemReturn(line, index)}
+                            color="success"
+                            size="md"
+                            aria-label={`Mark ${line} as returned`}
+                            className="shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="min-w-0">
+                            <span
+                              className={`text-sm font-medium ${
+                                isChecked ? "line-through text-foreground/50" : "text-foreground"
+                              }`}
+                            >
+                              {label}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {qty && (
+                            <Chip
+                              size="sm"
+                              variant="flat"
+                              color={isChecked ? "success" : "default"}
+                              className="text-xs h-5 px-1.5 font-mono"
+                            >
+                              Qty: {qty}
+                            </Chip>
+                          )}
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color={isChecked ? "success" : "warning"}
+                            className="text-[11px] h-5 hidden sm:inline-flex"
+                          >
+                            {isChecked ? "Returned" : "Pending return"}
+                          </Chip>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Missing / Damaged Items Note Textbox */}
+              <div className="space-y-1.5 pt-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                    <span>📝</span> Missing / Return Items Note
+                  </label>
+                  <span className="text-[11px] text-foreground/40" style={{ fontFamily: "var(--font-mono)" }}>
+                    Both staff & owner can edit
+                  </span>
+                </div>
+                <p className="text-xs text-foreground/50">
+                  Note down anything missing, damaged at the venue, or items left behind to bring back later.
+                </p>
+                <Textarea
+                  aria-label="Missing or return items note"
+                  placeholder="e.g. 1 curry bucket was missing at venue, 1 table left behind to bring tomorrow morning..."
+                  variant="bordered"
+                  value={itemReturnNotes}
+                  onValueChange={setItemReturnNotes}
+                  minRows={2}
+                />
+              </div>
+
+              {/* Quick Save in Return Check Section */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1 no-print">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    color="primary"
+                    radius="sm"
+                    onPress={onSave}
+                    isLoading={saving}
+                    className="font-semibold text-xs h-8"
+                  >
+                    Save item check
+                  </Button>
+                  {savedAt && <span className="text-xs text-success">Saved.</span>}
+                </div>
+
+                {allReturned && orderCompletion !== "completed" && (
+                  <Button
+                    size="sm"
+                    color="success"
+                    variant="flat"
+                    radius="sm"
+                    onPress={() => setOrderCompletion("completed")}
+                    className="text-xs h-8 font-semibold"
+                  >
+                    Mark work completion as completed ✓
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 

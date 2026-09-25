@@ -584,6 +584,12 @@ export default function OrderWizard({
         tenthouse: form.serviceType === "decoration" ? null : form.tenthouse,
         decoration: form.serviceType === "tenthouse" ? null : form.decoration,
         invoice: { ...form.invoice, dueAmount: String(dueAmount) },
+        ...(isEdit
+          ? {
+              returnedItems: initialOrder?.returnedItems,
+              itemReturnNotes: initialOrder?.itemReturnNotes,
+            }
+          : {}),
       };
       const res = isEdit
         ? await apiFetch(`/api/orders/${encodeURIComponent(initialOrder!.id)}`, {

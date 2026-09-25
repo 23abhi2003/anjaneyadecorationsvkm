@@ -482,6 +482,20 @@ async function buildStaffReportDoc(order: Order): Promise<jsPDF> {
     });
   }
 
+  if (order.itemReturnNotes?.trim()) {
+    y += 3;
+    y = ensureSpace(doc, y, 20);
+    y = sectionTitle(doc, "Missing / Return Notes", y, COLORS.leaf);
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COLORS.aubergine);
+    const returnNoteLines = doc.splitTextToSize(order.itemReturnNotes.trim(), PAGE_WIDTH - MARGIN * 2 - 2);
+    returnNoteLines.forEach((line: string) => {
+      y = ensureSpace(doc, y);
+      doc.text(line, MARGIN + 2, y);
+      y += 5.5;
+    });
+  }
+
   return doc;
 }
 

@@ -5,6 +5,7 @@ import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import AllStaffAnalyticsTab from "@/components/AllStaffAnalyticsTab";
+import BackButton from "@/components/BackButton";
 import type { StaffMember } from "@/lib/types";
 
 export default function StaffAnalyticsPage() {
@@ -42,6 +43,10 @@ export default function StaffAnalyticsPage() {
 
   return (
     <div>
+      <div className="mb-4">
+        <BackButton href="/staff" label="Back to Staff" />
+      </div>
+
       <h1 className="text-3xl font-semibold text-[#F8F4E6] mb-6" style={{ fontFamily: "var(--font-display)" }}>
         Staff Analytics
       </h1>
@@ -57,6 +62,10 @@ export default function StaffAnalyticsPage() {
       {isOwner && !loading && error && <p className="text-center text-danger py-10">{error}</p>}
 
       {isOwner && !loading && !error && <AllStaffAnalyticsTab staff={staff} />}
+
+      <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between">
+        <BackButton href="/staff" label="Back to Staff" />
+      </div>
     </div>
   );
 }

@@ -26,6 +26,7 @@ import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile, type
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { assignmentMoney, inr } from "@/lib/staffPay";
+import BackButton from "@/components/BackButton";
 
 const PAYMENT_OPTIONS: string[] = ["UPI", "Cash", "Other"];
 
@@ -374,6 +375,10 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
 
   return (
     <div className="space-y-6">
+      <div className="no-print">
+        <BackButton href="/orders" label="Back to Orders" />
+      </div>
+
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.25em] text-[#D9A427]" style={{ fontFamily: "var(--font-mono)" }}>
@@ -918,6 +923,10 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
           </div>
         </CardBody>
       </Card>
+
+      <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between no-print">
+        <BackButton href="/orders" label="Back to Orders" />
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Spinner, Button } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import StaffAssignmentsClient from "@/components/StaffAssignmentsClient";
+import BackButton from "@/components/BackButton";
 import type { StaffMember } from "@/lib/types";
 
 function StaffAssignmentsInner() {
@@ -60,9 +61,7 @@ function StaffAssignmentsInner() {
     return (
       <div className="text-center py-24 space-y-4">
         <p className="text-[#F8F4E6]/70">Staff member not found.</p>
-        <Button as={Link} href="/staff" color="primary" radius="sm">
-          Back to staff
-        </Button>
+        <BackButton href="/staff" label="Back to Staff" />
       </div>
     );
   }

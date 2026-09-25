@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
 import { Avatar, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
-import { Menu, PanelLeftClose, PanelLeftOpen, LifeBuoy, LogOut } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen, LifeBuoy, LogOut, ArrowLeft } from "lucide-react";
 import type { AuthUser } from "@/lib/Auth";
 
 export default function Header({
@@ -19,16 +20,32 @@ export default function Header({
   user: AuthUser | null;
   onLogout: () => void;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const displayName = user?.name?.trim() || user?.phone || "Account";
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <header className="sticky top-0 z-30 flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 bg-[#F8F4E6] border-b-2 border-double border-[#D9A427]/50">
+      {pathname !== "/" && (
+        <button
+          type="button"
+          onClick={() => router.back()}
+          aria-label="Go back"
+          title="Go back"
+          className="md:hidden p-2 -ml-1 rounded-md text-[#8B4A15] hover:bg-[#8B4A15]/10 active:bg-[#8B4A15]/15"
+        >
+          <ArrowLeft size={22} />
+        </button>
+      )}
+
       <button
         type="button"
         onClick={onOpenMobileMenu}
         aria-label="Open menu"
-        className="md:hidden p-2 -ml-1 rounded-md text-[#8B4A15] hover:bg-[#8B4A15]/10 active:bg-[#8B4A15]/15"
+        className={`md:hidden p-2 rounded-md text-[#8B4A15] hover:bg-[#8B4A15]/10 active:bg-[#8B4A15]/15 ${
+          pathname === "/" ? "-ml-1" : ""
+        }`}
       >
         <Menu size={22} />
       </button>

@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import AnalyticsTab from "@/components/AnalyticsTab";
 import StaffAnalyticsTab from "@/components/StaffAnalyticsTab";
+import BackButton from "@/components/BackButton";
 import type { Order, StaffMember } from "@/lib/types";
 
 export default function AnalyticsPage() {
@@ -69,6 +70,10 @@ export default function AnalyticsPage() {
 
   return (
     <div>
+      <div className="mb-4">
+        <BackButton href="/" label="Back to Dashboard" />
+      </div>
+
       <h1 className="text-3xl font-semibold text-[#F8F4E6] mb-6" style={{ fontFamily: "var(--font-display)" }}>
         Analytics
       </h1>
@@ -84,6 +89,10 @@ export default function AnalyticsPage() {
       {!loading && !error && isOwner && <AnalyticsTab orders={orders} staff={staff} />}
 
       {!loading && !error && !isOwner && ownStaff && <StaffAnalyticsTab staff={ownStaff} />}
+
+      <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between">
+        <BackButton href="/" label="Back to Dashboard" />
+      </div>
     </div>
   );
 }

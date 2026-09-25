@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Spinner, Button } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import OrderWizard from "@/components/OrderWizard";
+import BackButton from "@/components/BackButton";
 import type { Order, StaffMember } from "@/lib/types";
 
 function EditOrderInner() {
@@ -79,13 +80,17 @@ function EditOrderInner() {
 
   return (
     <div>
-      <p className="text-xs uppercase tracking-[0.25em] text-[#D9A427] mb-2" style={{ fontFamily: "var(--font-mono)" }}>
+      <BackButton href={id ? `/orders/detail?id=${encodeURIComponent(id)}` : "/orders"} label="Back to Order" />
+      <p className="text-xs uppercase tracking-[0.25em] text-[#D9A427] mb-2 mt-4" style={{ fontFamily: "var(--font-mono)" }}>
         {order.id}
       </p>
       <h1 className="text-3xl font-semibold text-[#F8F4E6] mb-6" style={{ fontFamily: "var(--font-display)" }}>
         Edit order
       </h1>
       <OrderWizard staffList={staff} initialOrder={order} />
+      <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between">
+        <BackButton href={id ? `/orders/detail?id=${encodeURIComponent(id)}` : "/orders"} label="Back to Order" />
+      </div>
     </div>
   );
 }

@@ -30,6 +30,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
+import BackButton from "@/components/BackButton";
 
 const POLL_INTERVAL_MS = 15000; // refetch customers every 15s to reflect newly placed orders
 
@@ -252,6 +253,10 @@ export default function CustomersClient({
 
   return (
     <div className="space-y-6">
+      <div className="no-print">
+        <BackButton href="/" label="Back to Dashboard" />
+      </div>
+
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <h1 className="text-3xl font-semibold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
           Customers
@@ -501,6 +506,10 @@ export default function CustomersClient({
           }}
         </ModalContent>
       </Modal>
+
+      <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between no-print">
+        <BackButton href="/" label="Back to Dashboard" />
+      </div>
     </div>
   );
 }

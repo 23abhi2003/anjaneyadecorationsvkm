@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Spinner, Button } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import OrderDetailClient from "@/components/OrderDetailClient";
+import BackButton from "@/components/BackButton";
 import type { Order, StaffMember } from "@/lib/types";
 
 function OrderDetailInner() {
@@ -72,9 +73,7 @@ function OrderDetailInner() {
     return (
       <div className="text-center py-24 space-y-4">
         <p className="text-[#F8F4E6]/70">Order not found.</p>
-        <Button as={Link} href="/orders" color="primary" radius="sm">
-          Back to orders
-        </Button>
+        <BackButton href="/orders" label="Back to Orders" />
       </div>
     );
   }

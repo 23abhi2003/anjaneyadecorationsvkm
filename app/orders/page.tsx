@@ -10,6 +10,7 @@ import { generateCombinedOrdersPdf } from "@/lib/pdf";
 import type { Order, OrderStatus } from "@/lib/types";
 import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
+import BackButton from "@/components/BackButton";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -192,6 +193,10 @@ export default function OrdersPage() {
 
   return (
     <div>
+      <div className="mb-4">
+        <BackButton href="/" label="Back to Dashboard" />
+      </div>
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-semibold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
           Orders
@@ -281,6 +286,10 @@ export default function OrdersPage() {
           </div>
         </>
       )}
+
+      <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between">
+        <BackButton href="/" label="Back to Dashboard" />
+      </div>
     </div>
   );
 }

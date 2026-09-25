@@ -37,6 +37,7 @@ import StaffPaymentsModal from "@/components/StaffPaymentsModal";
 import StaffBorrowsPanel from "@/components/StaffBorrowsPanel";
 import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
+import BackButton from "@/components/BackButton";
 
 /** Parses an order/assignment date string (YYYY-MM-DD) into a comparable Date, tolerating blanks. */
 function toDate(d?: string): Date | null {
@@ -186,10 +187,11 @@ export default function StaffAssignmentsClient({
 
   return (
     <div className="space-y-6">
+      <div className="no-print">
+        <BackButton href="/staff" label="Back to Staff" />
+      </div>
+
       <div className="flex items-center gap-3 flex-wrap">
-        <Button as={Link} href="/staff" isIconOnly variant="light" radius="sm" aria-label="Back to staff">
-          <ArrowLeft size={18} />
-        </Button>
         <h1 className="text-3xl font-semibold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
           {staff.name} — assignments
         </h1>
@@ -652,6 +654,10 @@ export default function StaffAssignmentsClient({
         onClose={() => setPayOrderId(null)}
         onChanged={() => onChanged?.()}
       />
+
+      <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between no-print">
+        <BackButton href="/staff" label="Back to Staff" />
+      </div>
     </div>
   );
 }

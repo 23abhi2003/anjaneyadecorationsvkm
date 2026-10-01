@@ -18,6 +18,8 @@ import {
 import QtyGrid from "@/components/QtyGrid";
 import QtyField from "@/components/QtyField";
 import LocationField from "@/components/LocationField";
+import { CustomerNameSuggestInput, ReferralNameSuggestInput } from "@/components/CustomerAutocompleteField";
+import { loadCustomerDirectory, type ContactDirectoryItem } from "@/lib/customerSuggestions";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import {
@@ -536,6 +538,18 @@ export default function OrderWizard({
   const [stepIdx, setStepIdx] = useState(isEdit ? Number.MAX_SAFE_INTEGER : 0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [directoryContacts, setDirectoryContacts] = useState<ContactDirectoryItem[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    loadCustomerDirectory().then((contacts) => {
+      if (isMounted) setDirectoryContacts(contacts);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const steps = useSteps(form.serviceType, isOwner);
   const step = steps[stepIdx] || "customer";
 
@@ -653,11 +667,22 @@ export default function OrderWizard({
               )}
 
               <div className="grid sm:grid-cols-2 gap-4">
-                <Input
+                <CustomerNameSuggestInput
                   label="Customer name"
                   variant="bordered"
                   value={form.customer.name}
-                  onValueChange={(v) => setPath("customer.name", v)}
+                  onChange={(v) => setPath("customer.name", v)}
+                  onSelectSuggestion={(name, phone) => {
+                    setForm((f) => ({
+                      ...f,
+                      customer: {
+                        ...f.customer,
+                        name,
+                        ...(phone ? { phone } : {}),
+                      },
+                    }));
+                  }}
+                  contacts={directoryContacts}
                 />
                 <Input
                   label="Phone number"
@@ -672,12 +697,23 @@ export default function OrderWizard({
                 onAddressChange={(v) => setPath("customer.address", v)}
                 onLocationChange={(v) => setPath("customer.location", v)}
               />
-              <Input
+              <ReferralNameSuggestInput
                 label="Referred by"
                 placeholder="Who referred this customer? (optional)"
                 variant="bordered"
                 value={form.customer.referredBy}
-                onValueChange={(v) => setPath("customer.referredBy", v)}
+                onChange={(v) => setPath("customer.referredBy", v)}
+                onSelectSuggestion={(referName, phone) => {
+                  setForm((f) => ({
+                    ...f,
+                    customer: {
+                      ...f.customer,
+                      referredBy: referName,
+                      ...(phone ? { phone } : {}),
+                    },
+                  }));
+                }}
+                contacts={directoryContacts}
               />
             </>
           )}

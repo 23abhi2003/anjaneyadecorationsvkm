@@ -29,31 +29,28 @@ export default function Sidebar({
   const isDriver = user?.role === "driver";
   const isStaff = user?.role === "staff";
 
-  // Decoration items: owners see all, staff sees non-ownerOnly, drivers see none
-  const decorationItems = isDriver
-    ? []
-    : NAV_ITEMS.filter((item) => !item.ownerOnly || isOwner);
+  // Decoration items: owners and drivers/staff see non-ownerOnly items (Orders, Customers, Staff)
+  const decorationItems = NAV_ITEMS.filter((item) => !item.ownerOnly || isOwner);
+
+  const isPilotOrStaff = isDriver || isStaff;
 
   // Auto Rides items:
   // - Owners see all subsections
-  // - Staff sees NONE (owner only)
-  // - Pilots see Rides, Customers, and Pilot Profile
-  const autoItems = isStaff
-    ? []
-    : AUTO_RIDE_ITEMS.filter((item) => {
-        if (isOwner) return true;
-        if (isDriver) {
-          return item.href === "/auto-rides/rides" || item.href === "/auto-rides/customers" || item.href === "/auto-rides/drivers";
-        }
-        return false;
-      }).map((item) => {
-        if (isDriver) {
-          if (item.href === "/auto-rides/rides") return { ...item, label: "Rides" };
-          if (item.href === "/auto-rides/customers") return { ...item, label: "Customers" };
-          if (item.href === "/auto-rides/drivers") return { ...item, label: "Pilot Profile" };
-        }
-        return item;
-      });
+  // - Pilots and Staff see Rides, Customers, and Pilot Fare
+  const autoItems = AUTO_RIDE_ITEMS.filter((item) => {
+    if (isOwner) return true;
+    if (isPilotOrStaff) {
+      return item.href === "/auto-rides/rides" || item.href === "/auto-rides/customers" || item.href === "/auto-rides/drivers";
+    }
+    return false;
+  }).map((item) => {
+    if (isPilotOrStaff) {
+      if (item.href === "/auto-rides/rides") return { ...item, label: "Rides" };
+      if (item.href === "/auto-rides/customers") return { ...item, label: "Customers" };
+      if (item.href === "/auto-rides/drivers") return { ...item, label: "Pilot Fare" };
+    }
+    return item;
+  });
 
   const isAutoRidesPath = (pathname ?? "").startsWith("/auto-rides");
 
@@ -122,7 +119,7 @@ export default function Sidebar({
               <div className="px-3 pb-2 pt-1 flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#241129]/80 flex items-center gap-1.5" style={{ fontFamily: "var(--font-mono)" }}>
                   <Car size={13} className="text-primary" />
-                  {isDriver ? "Pilot Portal" : "Auto Rides"}
+                  Auto Rides
                 </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-[#241129] font-medium" style={{ fontFamily: "var(--font-mono)" }}>
                   VKM
@@ -165,7 +162,7 @@ export default function Sidebar({
       </nav>
 
       {/* Bottom CTA Button */}
-      {(isOwner || isDriver) && (
+      {(isOwner || isDriver || isStaff) && (
         <div className={`pb-5 pt-2 border-t border-[#D9A427]/30 ${collapsed ? "px-2" : "px-3"}`}>
           {isAutoRidesPath || isDriver ? (
             collapsed ? (

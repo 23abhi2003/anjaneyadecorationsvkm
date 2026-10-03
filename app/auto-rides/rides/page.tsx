@@ -40,7 +40,7 @@ export default function AutoRidesListPage() {
 
   const { user, loading: authLoading } = useAuth();
   const isOwner = user?.role === "owner";
-  const isDriver = user?.role === "driver";
+  const isDriver = user?.role === "driver" || user?.role === "staff";
 
   const [rides, setRides] = useState<AutoRide[]>([]);
   const [drivers, setDrivers] = useState<AutoDriver[]>([]);
@@ -104,10 +104,12 @@ export default function AutoRidesListPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const filteredRides = useMemo(() => {
+    const myName = (user?.name || "").trim().toLowerCase();
+    const hasMyTrips = isDriver && myName && rides.some((r) => (r.driverAssigned || "").trim().toLowerCase() === myName);
+
     return rides.filter((r) => {
-      // For driver role, only show trips assigned to this pilot (same as staff)
-      if (isDriver) {
-        const myName = (user?.name || "").trim().toLowerCase();
+      // For pilot/staff role, if they have assigned trips show those
+      if (isDriver && hasMyTrips) {
         const assignedName = (r.driverAssigned || "").trim().toLowerCase();
         if (assignedName !== myName) return false;
       }
@@ -146,8 +148,7 @@ export default function AutoRidesListPage() {
   }, [rides, search, statusFilter, paymentFilter, driverFilter, dateFilter, todayStr, isDriver, user?.name]);
 
   function handleRideClick(ride: AutoRide) {
-    setSelectedRide(ride);
-    openDetail();
+    router.push(`/auto-rides/rides/detail?id=${encodeURIComponent(ride.id)}`);
   }
 
   function handleEditRide(ride: AutoRide) {
@@ -316,9 +317,10 @@ export default function AutoRidesListPage() {
             return (
               <Card
                 key={ride.id}
+                as={Link}
+                href={`/auto-rides/rides/detail?id=${encodeURIComponent(ride.id)}`}
                 isPressable
-                onPress={() => handleRideClick(ride)}
-                className="p-4 bg-white/95 border border-[#D9A427]/30 shadow-sm hover:shadow-md transition-all text-left"
+                className="p-4 bg-white/95 border border-[#D9A427]/30 shadow-sm hover:shadow-md transition-all text-left block"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>

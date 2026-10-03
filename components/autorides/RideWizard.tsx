@@ -152,7 +152,7 @@ export default function RideWizard({
   const router = useRouter();
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
-  const isDriver = user?.role === "driver";
+  const isDriver = user?.role === "driver" || user?.role === "staff";
   const isEdit = Boolean(initialRide);
 
   // Owners get all 4 steps (including fare & driver wage); Pilots skip the fare step completely (same as decoration staff)
@@ -190,6 +190,12 @@ export default function RideWizard({
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!initialRide && isDriver && user?.name && (form.driverAssigned === "Unassigned" || !form.driverAssigned)) {
+      updateField("driverAssigned", user.name);
+    }
+  }, [initialRide, isDriver, user?.name, form.driverAssigned]);
 
   const step = steps[stepIdx] || "passenger";
   const progressPct = ((stepIdx + 1) / steps.length) * 100;

@@ -41,7 +41,7 @@ import DriverBorrowModal from "@/components/autorides/DriverBorrowModal";
 export default function AutoDriversPage() {
   const { user, loading: authLoading } = useAuth();
   const isOwner = user?.role === "owner";
-  const isDriver = user?.role === "driver";
+  const isDriver = user?.role === "driver" || user?.role === "staff";
 
   const [drivers, setDrivers] = useState<AutoDriver[]>([]);
   const [rides, setRides] = useState<AutoRide[]>([]);
@@ -377,13 +377,14 @@ export default function AutoDriversPage() {
               ) : (
                 <div className="space-y-3">
                   {driverSummaries[0].rides.map((r) => (
-                    <div
+                    <Link
                       key={r.id}
-                      className="p-4 rounded-xl bg-white border border-[#D9A427]/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                      href={`/auto-rides/rides/detail?id=${encodeURIComponent(r.id)}`}
+                      className="p-4 rounded-xl bg-white hover:bg-primary/5 border border-[#D9A427]/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-colors block"
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-[#241129] font-mono text-sm">{r.id}</span>
+                          <span className="font-bold text-primary font-mono text-sm underline">{r.id}</span>
                           <span className="text-gray-400 font-mono">· {r.date}</span>
                           <Chip size="sm" variant="flat" color={r.status === "completed" ? "success" : "warning"}>
                             {r.status}
@@ -404,7 +405,7 @@ export default function AutoDriversPage() {
                           ₹{parseFloat(r.driverPay || "0").toLocaleString("en-IN")}
                         </span>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}

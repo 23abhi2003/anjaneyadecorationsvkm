@@ -180,8 +180,7 @@ export default function AutoRidesDashboard() {
   }
 
   function handleRideClick(ride: AutoRide) {
-    setSelectedRide(ride);
-    openDetail();
+    router.push(`/auto-rides/rides/detail?id=${encodeURIComponent(ride.id)}`);
   }
 
   function handleEditRide(ride: AutoRide) {
@@ -448,9 +447,10 @@ export default function AutoRidesDashboard() {
               return (
                 <Card
                   key={ride.id}
+                  as={Link}
+                  href={`/auto-rides/rides/detail?id=${encodeURIComponent(ride.id)}`}
                   isPressable
-                  onPress={() => handleRideClick(ride)}
-                  className="p-4 bg-white/95 border border-[#D9A427]/30 shadow-sm hover:shadow-md transition-all text-left"
+                  className="p-4 bg-white/95 border border-[#D9A427]/30 shadow-sm hover:shadow-md transition-all text-left block"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>

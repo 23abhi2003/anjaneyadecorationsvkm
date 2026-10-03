@@ -6,6 +6,7 @@ import type { Role } from "@/lib/types";
 
 export interface AuthUser {
   staffId?: string;
+  driverId?: string;
   name?: string;
   phone: string;
   role: Role;

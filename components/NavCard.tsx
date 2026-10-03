@@ -6,7 +6,7 @@ import { Card, CardBody } from "@heroui/react";
 interface NavCardProps {
   href: string;
   title: string;
-  count: number;
+  count: number | string;
   sub: string;
 }
 

@@ -63,7 +63,7 @@ export default function LoginPage() {
             className="text-xs uppercase tracking-[0.22em] text-[#3F6B1F] mt-1.5 font-medium"
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            Tent House &middot; Decorations &middot; V.K.M
+            Tent House &middot; Decorations &middot; Auto Rentals &middot; V.K.M
           </p>
         </div>
 
@@ -77,7 +77,7 @@ export default function LoginPage() {
               Sign In
             </h2>
             <p className="text-sm text-[#241129]/65 mt-1.5 max-w-xs mx-auto">
-              Enter your registered mobile number &amp; PIN
+              Enter registered mobile &amp; PIN (Owner, Staff, or Pilot)
             </p>
           </div>
 

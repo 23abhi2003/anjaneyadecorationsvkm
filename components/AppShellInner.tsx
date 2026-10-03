@@ -53,6 +53,14 @@ function Shell({ children }: { children: ReactNode }) {
     if (!user && !isLoginRoute) {
       router.replace("/login");
     } else if (user && isLoginRoute) {
+      if (user.role === "driver") {
+        router.replace("/auto-rides/rides");
+      } else {
+        router.replace("/");
+      }
+    } else if (user && user.role === "driver" && !pathname.startsWith("/auto-rides")) {
+      router.replace("/auto-rides/rides");
+    } else if (user && user.role === "staff" && pathname.startsWith("/auto-rides")) {
       router.replace("/");
     }
   }, [loading, user, isLoginRoute, router]);

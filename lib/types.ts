@@ -6,7 +6,7 @@ export type CompletionStatus = "pending" | "completed";
 
 export type CustomerType = "new" | "older";
 
-export type Role = "owner" | "staff";
+export type Role = "owner" | "staff" | "driver";
 
 export interface GeoLocation {
   lat: number;
@@ -231,3 +231,67 @@ export interface StaffMember {
   borrows?: StaffBorrow[];
   assignments: StaffAssignmentRecord[];
 }
+
+export type AutoRideStatus = "completed" | "scheduled" | "cancelled";
+export type AutoRidePaymentStatus = "paid" | "due";
+
+export interface AutoRide {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  driverAssigned: string;
+  date: string;
+  pickupLocation?: string;
+  dropLocation?: string;
+  totalAmount: string;
+  advancePaid: string;
+  dueAmount?: string;
+  driverPay?: string;
+  status: AutoRideStatus;
+  paymentStatus: AutoRidePaymentStatus;
+  notes?: string;
+  createdAt?: string;
+}
+
+export type AutoDieselType = "diesel" | "repair";
+
+export interface AutoDieselEntry {
+  id: string;
+  date: string;
+  type?: AutoDieselType;
+  totalAmount: string;
+  litres?: string;
+  filledByDriver?: string;
+  stationOrVehicle?: string;
+  repairItem?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface AutoDriverPayout {
+  id: string;
+  driverName: string;
+  amount: string;
+  date: string;
+  mode?: string;
+  note?: string;
+  createdAt?: string;
+}
+
+export interface AutoDriverBorrow {
+  id: string;
+  driverName: string;
+  amount: string;
+  date: string;
+  reason: string;
+  paymentStatus: StaffPaymentStatus;
+  createdAt?: string;
+}
+
+export interface AutoDriver {
+  id: string;
+  name: string;
+  phone: string;
+  pin?: string;
+  createdAt?: string;
+}

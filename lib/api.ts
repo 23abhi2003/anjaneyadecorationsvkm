@@ -12,6 +12,8 @@ export const AUTH_STORAGE_KEY = "anjaneya_auth";
 interface StoredUser {
   role?: string;
   staffId?: string; 
+  driverId?: string;
+  name?: string;
 }
 
 function getStoredUser(): StoredUser | null {
@@ -31,12 +33,9 @@ function getStoredUser(): StoredUser | null {
  *
  * There's no bearer token anymore — login just checks credentials once and
  * the frontend remembers who's signed in. Every request resends that
- * identity as plain headers (`X-User-Role` / `X-User-Staff-Id`) so the
+ * identity as plain headers (`X-User-Role` / `X-User-Staff-Id` / `X-User-Driver-Id` / `X-User-Name`) so the
  * backend can still apply its existing business rules (hide invoice amounts
- * from staff, owner-only actions, etc). This is NOT a security boundary —
- * anyone could set these headers by hand — it's just enough for the normal
- * app UI to behave the way it did before, without the token machinery that
- * kept causing 401s.
+ * from staff, owner-only actions, etc).
  */
 export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const user = getStoredUser();
@@ -46,6 +45,12 @@ export function apiFetch(path: string, init: RequestInit = {}): Promise<Response
   }
   if (user?.staffId && !headers.has("X-User-Staff-Id")) {
     headers.set("X-User-Staff-Id", user.staffId);
+  }
+  if (user?.driverId && !headers.has("X-User-Driver-Id")) {
+    headers.set("X-User-Driver-Id", user.driverId);
+  }
+  if (user?.name && !headers.has("X-User-Name")) {
+    headers.set("X-User-Name", user.name);
   }
   return fetch(`${API_BASE}${path}`, { ...init, headers });
 }

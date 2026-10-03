@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import AutoRickshawIcon from "@/components/icons/AutoRickshawIcon";
 import {
   Button,
   Card,
@@ -13,6 +15,7 @@ import {
   Spinner,
   useDisclosure,
 } from "@heroui/react";
+import { ListCardsSkeleton } from "@/components/Skeletons";
 import {
   Car,
   Search,
@@ -128,7 +131,15 @@ export default function AutoRidesListPage() {
       }
 
       // Status
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (statusFilter !== "all") {
+        const isFully =
+          r.status === "completed" &&
+          (r.paymentStatus === "paid" || (parseFloat(r.dueAmount || "0") || 0) <= 0);
+
+        if (statusFilter === "completed" && !isFully) return false;
+        if (statusFilter === "pending" && (isFully || r.status === "cancelled")) return false;
+        if (statusFilter === "cancelled" && r.status !== "cancelled") return false;
+      }
 
       // Payment
       if (paymentFilter !== "all" && r.paymentStatus !== paymentFilter) return false;
@@ -156,11 +167,7 @@ export default function AutoRidesListPage() {
   }
 
   if (authLoading || loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading rides..." color="warning" />
-      </div>
-    );
+    return <ListCardsSkeleton />;
   }
 
   return (
@@ -169,9 +176,12 @@ export default function AutoRidesListPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <BackButton href={isDriver ? undefined : "/auto-rides"} />
+          <div className="relative w-11 h-11 rounded-full overflow-hidden border-2 border-[#D9A427] shadow-sm bg-[#241129] shrink-0">
+            <Image src="/vkm-auto-rides-logo.jpg" alt="VKM Auto Rides" fill className="object-cover" />
+          </div>
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
-              {isDriver ? "My Assigned Rides" : "Auto Rides Directory"}
+              {isDriver ? "My Assigned Rides · VKM Auto Rides" : "VKM Auto Rides Directory"}
             </h1>
             <p className="text-xs text-[#F8F4E6]/70 font-mono mt-0.5">
               {filteredRides.length} of {rides.length} rides found
@@ -229,8 +239,8 @@ export default function AutoRidesListPage() {
               }}
             >
               <SelectItem key="all" textValue="All Statuses">All Statuses</SelectItem>
-              <SelectItem key="completed" textValue="Completed">Completed</SelectItem>
-              <SelectItem key="scheduled" textValue="Scheduled">Scheduled</SelectItem>
+              <SelectItem key="completed" textValue="Fully Completed">Fully Completed</SelectItem>
+              <SelectItem key="pending" textValue="Pending">Pending</SelectItem>
               <SelectItem key="cancelled" textValue="Cancelled">Cancelled</SelectItem>
             </Select>
           </div>
@@ -303,7 +313,7 @@ export default function AutoRidesListPage() {
       {/* Rides List */}
       {filteredRides.length === 0 ? (
         <div className="p-12 text-center bg-white rounded-xl border border-[#D9A427]/30 text-gray-500 space-y-3">
-          <Car size={40} className="mx-auto text-gray-300" />
+          <AutoRickshawIcon size={44} className="mx-auto text-primary/60" />
           <p className="text-base font-medium">No rides found.</p>
           <p className="text-xs text-gray-400">Try adjusting your search query or filters.</p>
         </div>
@@ -329,24 +339,55 @@ export default function AutoRidesListPage() {
                     <p className="text-xs text-gray-500 font-mono">{ride.customerPhone || "No phone"}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      color={
-                        ride.status === "completed"
-                          ? "success"
-                          : ride.status === "scheduled"
-                            ? "primary"
-                            : "danger"
+                    {(() => {
+                      const isFullyCompleted =
+                        ride.status === "completed" &&
+                        (ride.paymentStatus === "paid" ||
+                          (parseFloat(ride.dueAmount || "0") || 0) <= 0);
+
+                      if (isFullyCompleted) {
+                        return (
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color="success"
+                            className="font-bold text-xs capitalize"
+                          >
+                            Fully Completed
+                          </Chip>
+                        );
                       }
-                    >
-                      {ride.status}
-                    </Chip>
+
+                      if (ride.status === "cancelled") {
+                        return (
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color="danger"
+                            className="font-bold text-xs capitalize"
+                          >
+                            Cancelled
+                          </Chip>
+                        );
+                      }
+
+                      return (
+                        <Chip
+                          size="sm"
+                          variant="flat"
+                          color="warning"
+                          className="font-bold text-xs capitalize"
+                        >
+                          Pending
+                        </Chip>
+                      );
+                    })()}
                     {isOwner && (
                       <Chip
                         size="sm"
                         variant="dot"
                         color={ride.paymentStatus === "paid" ? "success" : "warning"}
+                        className="font-mono text-[11px]"
                       >
                         {ride.paymentStatus === "paid" ? "Paid" : "Due"}
                       </Chip>

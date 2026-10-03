@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import type { AutoRide, AutoDriver } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
-import { waLink } from "@/lib/orderDisplay";
+import { waLink, cleanLocationForMaps, buildRouteDirectionsUrl } from "@/lib/orderDisplay";
 import { buildDriverRideWhatsAppMessage } from "@/components/autorides/RideWizard";
 
 interface RideDetailModalProps {
@@ -67,11 +67,7 @@ export default function RideDetailModal({
   const netProfit = total - driverPay;
 
   const cleanPhone = (ride.customerPhone || "").replace(/\D/g, "");
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-    ride.pickupLocation ? `${ride.pickupLocation}, V.K.M` : "V.K.M"
-  )}&destination=${encodeURIComponent(
-    ride.dropLocation ? `${ride.dropLocation}, V.K.M` : "V.K.M"
-  )}`;
+  const mapsUrl = buildRouteDirectionsUrl(ride.pickupLocation, ride.dropLocation);
 
   const waCustomerMessage = encodeURIComponent(
     `Namaskaram ${ride.customerName},\nThank you for choosing Anjaneya Auto Rentals V.K.M!\n\n🚖 *Ride Details*:\nTrip ID: ${ride.id}\nPickup: ${ride.pickupLocation || "VKM"}\nDrop: ${ride.dropLocation || "VKM"}\nDate: ${ride.date}\nTotal Fare: ₹${total}\nAdvance: ₹${advance}\nPending Due: ₹${due}\n\nFor any help, call: 9704452180.`
@@ -172,15 +168,23 @@ export default function RideDetailModal({
                       size="sm"
                       variant="flat"
                       color={
-                        ride.status === "completed"
+                        ride.status === "completed" &&
+                        (ride.paymentStatus === "paid" ||
+                          (parseFloat(ride.dueAmount || "0") || 0) <= 0)
                           ? "success"
-                          : ride.status === "scheduled"
-                          ? "primary"
-                          : "danger"
+                          : ride.status === "cancelled"
+                          ? "danger"
+                          : "warning"
                       }
-                      className="font-bold text-xs"
+                      className="font-bold text-xs capitalize"
                     >
-                      {ride.status}
+                      {ride.status === "completed" &&
+                      (ride.paymentStatus === "paid" ||
+                        (parseFloat(ride.dueAmount || "0") || 0) <= 0)
+                        ? "Fully Completed"
+                        : ride.status === "cancelled"
+                        ? "Cancelled"
+                        : "Pending"}
                     </Chip>
                   </div>
                   <p className="text-xs text-primary font-mono font-bold">

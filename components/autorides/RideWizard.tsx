@@ -33,7 +33,8 @@ import {
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { loadCustomerDirectory, type ContactDirectoryItem } from "@/lib/customerSuggestions";
-import { waLink } from "@/lib/orderDisplay";
+import { waLink, cleanLocationForMaps, buildRouteDirectionsUrl } from "@/lib/orderDisplay";
+import LocationSearchInput from "@/components/autorides/LocationSearchInput";
 import type { AutoRide, AutoDriver } from "@/lib/types";
 
 type StepKey = "passenger" | "route" | "fare" | "review";
@@ -114,9 +115,9 @@ export function buildDriverRideWhatsAppMessage(
   },
   driverName: string
 ): string {
-  const pickup = ride.pickupLocation || "VKM";
-  const drop = ride.dropLocation || "VKM";
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(drop)}`;
+  const pickup = cleanLocationForMaps(ride.pickupLocation);
+  const drop = cleanLocationForMaps(ride.dropLocation);
+  const mapsUrl = buildRouteDirectionsUrl(ride.pickupLocation, ride.dropLocation);
 
   const lines = [
     `*Anjaneya Auto Rentals — V.K.M*`,
@@ -180,6 +181,7 @@ export default function RideWizard({
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState("");
   const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [dropCoords, setDropCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -226,7 +228,7 @@ export default function RideWizard({
     setNameSuggestions([]);
   }
 
-  // Geolocation
+  // Geolocation with reverse geocoding
   function useCurrentLocation(): void {
     if (!("geolocation" in navigator)) {
       setLocError("Location isn't available in this browser.");
@@ -235,15 +237,31 @@ export default function RideWizard({
     setLocating(true);
     setLocError("");
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setPickupCoords({ lat, lng });
-        updateField("pickupLocation", `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        try {
+          const revRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+          );
+          if (revRes.ok) {
+            const data = await revRes.json();
+            const addr = data.address || {};
+            const cleanName =
+              addr.road || addr.suburb || addr.neighbourhood || addr.village || addr.town || addr.city || data.display_name?.split(",")[0];
+            const area = addr.town || addr.city || addr.county || "Vikarabad";
+            updateField("pickupLocation", cleanName ? `${cleanName}, ${area}` : `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          } else {
+            updateField("pickupLocation", `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          }
+        } catch {
+          updateField("pickupLocation", `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
         setLocating(false);
       },
       () => {
-        setLocError("Couldn't get your location. You can type the address instead.");
+        setLocError("Couldn't get your location. You can type or search the address instead.");
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -262,9 +280,7 @@ export default function RideWizard({
 
   const routeDirectionsUrl =
     form.pickupLocation || form.dropLocation
-      ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-          form.pickupLocation || "VKM"
-        )}&destination=${encodeURIComponent(form.dropLocation || "VKM")}`
+      ? buildRouteDirectionsUrl(form.pickupLocation, form.dropLocation)
       : null;
 
   // Driver WhatsApp Resolution
@@ -621,32 +637,19 @@ export default function RideWizard({
               </div>
             )}
 
-            {/* Pickup Location with Geolocation & Google Maps Preview */}
-            <div className="space-y-2">
-              <div className="flex gap-2 items-end">
-                <Input
-                  label="Pickup Location"
-                  value={form.pickupLocation}
-                  onValueChange={(v) => updateField("pickupLocation", v)}
-                  variant="bordered"
-                  radius="sm"
-                  size="lg"
-                  className="flex-1"
-                  startContent={<MapPin size={18} className="text-success" />}
-                />
-                <Button
-                  type="button"
-                  variant="bordered"
-                  radius="sm"
-                  size="lg"
-                  onPress={useCurrentLocation}
-                  isLoading={locating}
-                  startContent={!locating && <LocateFixed size={18} className="text-primary" />}
-                  className="shrink-0 font-semibold"
-                >
-                  Use current location
-                </Button>
-              </div>
+            {/* Pickup Location with Live Geocoding Search */}
+            <div className="space-y-1">
+              <LocationSearchInput
+                label="Pickup Location"
+                value={form.pickupLocation}
+                onChange={(val, coords) => {
+                  updateField("pickupLocation", val);
+                  if (coords) setPickupCoords(coords);
+                }}
+                isPickup={true}
+                onUseCurrentLocation={useCurrentLocation}
+                locating={locating}
+              />
 
               {locError && <p className="text-xs text-danger">{locError}</p>}
 
@@ -665,44 +668,21 @@ export default function RideWizard({
                   </button>
                 </p>
               )}
-
-              {pickupMapsUrl && (
-                <a
-                  href={pickupMapsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary font-mono hover:underline pt-0.5"
-                >
-                  <ExternalLink size={12} />
-                  Preview Pickup on Google Maps &rarr;
-                </a>
-              )}
             </div>
 
-            {/* Drop Location with Google Maps Preview */}
-            <div className="space-y-2">
-              <Input
+            {/* Drop Location with Live Geocoding Search */}
+            <div className="space-y-1">
+              <LocationSearchInput
                 label="Destination (Drop)"
                 value={form.dropLocation}
-                onValueChange={(v) => updateField("dropLocation", v)}
-                variant="bordered"
-                radius="sm"
-                size="lg"
-                startContent={<MapPin size={18} className="text-danger" />}
+                onChange={(val, coords) => {
+                  updateField("dropLocation", val);
+                  if (coords) setDropCoords(coords);
+                }}
+                isPickup={false}
               />
-
-              {dropMapsUrl && (
-                <a
-                  href={dropMapsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary font-mono hover:underline pt-0.5"
-                >
-                  <ExternalLink size={12} />
-                  Preview Destination on Google Maps &rarr;
-                </a>
-              )}
             </div>
+
 
             {/* Date & Driver Selection */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">

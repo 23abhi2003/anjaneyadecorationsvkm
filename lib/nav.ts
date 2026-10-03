@@ -21,7 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export const AUTO_RIDE_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/auto-rides", icon: LayoutDashboard, ownerOnly: true },
+  { label: "Dashboard", href: "/auto-rides", icon: LayoutDashboard },
   { label: "Rides", href: "/auto-rides/rides", icon: Navigation },
   { label: "Customers", href: "/auto-rides/customers", icon: Users, ownerOnly: true },
   { label: "Pilots", href: "/auto-rides/drivers", icon: HardHat },

@@ -55,6 +55,25 @@ export function mapsLinkForOrder(order: Order): string | null {
   return null;
 }
 
+export function cleanLocationForMaps(loc?: string): string {
+  const trimmed = (loc || "").trim();
+  if (!trimmed) return "Vikarabad, Telangana";
+  if (/^v\.?k\.?m\.?$/i.test(trimmed)) {
+    return "Vikarabad, Telangana";
+  }
+  const cleaned = trimmed
+    .replace(/,\s*v\.?k\.?m\.?$/i, "")
+    .replace(/\s+v\.?k\.?m\.?$/i, "")
+    .trim();
+  return cleaned || "Vikarabad, Telangana";
+}
+
+export function buildRouteDirectionsUrl(origin?: string, destination?: string): string {
+  const cleanOrigin = cleanLocationForMaps(origin);
+  const cleanDestination = cleanLocationForMaps(destination);
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(cleanOrigin)}&destination=${encodeURIComponent(cleanDestination)}`;
+}
+
 function flatten(obj?: Record<string, string>): string[] {
   return Object.entries(obj ?? {})
     .filter(([, v]) => v)

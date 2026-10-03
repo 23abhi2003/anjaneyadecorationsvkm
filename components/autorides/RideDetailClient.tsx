@@ -33,7 +33,7 @@ import {
 import type { AutoRide, AutoDriver } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import { waLink } from "@/lib/orderDisplay";
+import { waLink, cleanLocationForMaps, buildRouteDirectionsUrl } from "@/lib/orderDisplay";
 import { buildDriverRideWhatsAppMessage } from "@/components/autorides/RideWizard";
 import BackButton from "@/components/BackButton";
 
@@ -71,14 +71,10 @@ export default function RideDetailClient({
   const netProfit = total - driverPay;
 
   const cleanPhone = (ride.customerPhone || "").replace(/\D/g, "");
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-    ride.pickupLocation ? `${ride.pickupLocation}, V.K.M` : "V.K.M"
-  )}&destination=${encodeURIComponent(
-    ride.dropLocation ? `${ride.dropLocation}, V.K.M` : "V.K.M"
-  )}`;
+  const mapsUrl = buildRouteDirectionsUrl(ride.pickupLocation, ride.dropLocation);
 
   const waCustomerMessage = encodeURIComponent(
-    `Namaskaram ${ride.customerName},\nThank you for choosing Anjaneya Auto Rentals V.K.M!\n\n🚖 *Ride Details*:\nTrip ID: ${ride.id}\nPickup: ${ride.pickupLocation || "VKM"}\nDrop: ${ride.dropLocation || "VKM"}\nDate: ${ride.date}${
+    `Namaskaram ${ride.customerName},\nThank you for choosing VKM Auto Rides V.K.M!\n\n🛺 *Ride Details*:\nTrip ID: ${ride.id}\nPickup: ${ride.pickupLocation || "VKM"}\nDrop: ${ride.dropLocation || "VKM"}\nDate: ${ride.date}${
       isOwner ? `\nTotal Fare: ₹${total}\nAdvance: ₹${advance}\nPending Due: ₹${due}` : ""
     }\n\nFor any help, call: 9704452180.`
   );
@@ -174,48 +170,57 @@ export default function RideDetailClient({
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <span className="p-2.5 rounded-xl bg-primary/20 text-[#241129] border border-primary/40 shadow-sm">
-              <Car size={26} />
-            </span>
+            <div className="relative w-12 h-12 rounded-xl overflow-hidden border-2 border-[#D9A427] shadow-md bg-[#241129] shrink-0">
+              <Image
+                src="/vkm-auto-rides-logo.jpg"
+                alt="VKM Auto Rides"
+                fill
+                className="object-cover"
+              />
+            </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span
                   className="text-xs uppercase tracking-[0.25em] text-[#D9A427] font-bold"
                   style={{ fontFamily: "var(--font-mono)" }}
                 >
                   {ride.id}
                 </span>
-                <Chip
-                  size="sm"
-                  variant="flat"
-                  color={
-                    rideCompletion === "completed" && paymentCompletion === "paid"
-                      ? "success"
-                      : rideCompletion === "completed"
-                      ? "secondary"
-                      : "primary"
-                  }
-                  className="font-bold text-xs uppercase"
-                >
-                  {rideCompletion === "completed" && paymentCompletion === "paid"
-                    ? "Fully Completed"
-                    : rideCompletion === "completed"
-                    ? "Trip Done · Payment Due"
-                    : "Scheduled"}
-                </Chip>
+
+                {/* Fully Completed or Pending Badge */}
+                {rideCompletion === "completed" && paymentCompletion === "paid" ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-600 text-white shadow-sm border border-emerald-400/40">
+                    <Check size={13} strokeWidth={3} />
+                    Fully Completed
+                  </span>
+                ) : ride.status === "cancelled" ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-red-600 text-white shadow-sm border border-red-400/40">
+                    Cancelled
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500 text-[#241129] shadow-sm border border-amber-300/40">
+                    <span className="w-2 h-2 rounded-full bg-[#241129] animate-pulse" />
+                    Pending
+                  </span>
+                )}
+
+                {/* Payment Status Badge (Owner only) */}
                 {isOwner && (
-                  <Chip
-                    size="sm"
-                    variant="dot"
-                    color={paymentCompletion === "paid" ? "success" : "warning"}
-                    className="font-mono text-xs"
-                  >
-                    {paymentCompletion === "paid" ? "Paid" : "Due"}
-                  </Chip>
+                  paymentCompletion === "paid" ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono uppercase tracking-wider bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 shadow-sm">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      Paid in Full
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono uppercase tracking-wider bg-amber-950/90 text-amber-300 border border-amber-500/60 shadow-sm">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      Payment Due: ₹{due.toLocaleString("en-IN")}
+                    </span>
+                  )
                 )}
               </div>
               <h1
-                className="text-3xl font-bold text-[#F8F4E6] mt-1"
+                className="text-3xl font-bold text-[#F8F4E6] mt-1.5"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 {ride.customerName}

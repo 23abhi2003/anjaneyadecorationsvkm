@@ -6,6 +6,7 @@ import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import RideDetailClient from "@/components/autorides/RideDetailClient";
 import BackButton from "@/components/BackButton";
+import { DetailPageSkeleton } from "@/components/Skeletons";
 import type { AutoRide, AutoDriver } from "@/lib/types";
 
 function RideDetailInner() {
@@ -79,11 +80,7 @@ function RideDetailInner() {
   }, [id]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading ride details…" color="warning" />
-      </div>
-    );
+    return <DetailPageSkeleton />;
   }
 
   if (notFound || !ride) {
@@ -100,13 +97,7 @@ function RideDetailInner() {
 
 export default function RideDetailPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex justify-center py-24">
-          <Spinner label="Loading ride details…" color="warning" />
-        </div>
-      }
-    >
+    <Suspense fallback={<DetailPageSkeleton />}>
       <RideDetailInner />
     </Suspense>
   );

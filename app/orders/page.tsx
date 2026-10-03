@@ -11,6 +11,7 @@ import type { Order, OrderStatus } from "@/lib/types";
 import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
 import BackButton from "@/components/BackButton";
+import { ListCardsSkeleton } from "@/components/Skeletons";
 
 const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -271,9 +272,7 @@ export default function OrdersPage() {
       )}
 
       {loading && (
-        <div className="flex justify-center py-16">
-          <Spinner label="Loading orders…" color="primary" />
-        </div>
+        <ListCardsSkeleton />
       )}
 
       {!loading && error && <p className="text-center text-danger py-10">{error}</p>}

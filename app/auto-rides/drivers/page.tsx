@@ -386,8 +386,25 @@ export default function AutoDriversPage() {
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-primary font-mono text-sm underline">{r.id}</span>
                           <span className="text-gray-400 font-mono">· {r.date}</span>
-                          <Chip size="sm" variant="flat" color={r.status === "completed" ? "success" : "warning"}>
-                            {r.status}
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color={
+                              r.status === "completed" &&
+                              (r.paymentStatus === "paid" || (parseFloat(r.dueAmount || "0") || 0) <= 0)
+                                ? "success"
+                                : r.status === "cancelled"
+                                ? "danger"
+                                : "warning"
+                            }
+                            className="font-bold text-xs capitalize"
+                          >
+                            {r.status === "completed" &&
+                            (r.paymentStatus === "paid" || (parseFloat(r.dueAmount || "0") || 0) <= 0)
+                              ? "Fully Completed"
+                              : r.status === "cancelled"
+                              ? "Cancelled"
+                              : "Pending"}
                           </Chip>
                         </div>
                         <p className="font-medium text-[#241129]">

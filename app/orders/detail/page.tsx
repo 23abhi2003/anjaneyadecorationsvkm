@@ -7,6 +7,7 @@ import { Spinner, Button } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import OrderDetailClient from "@/components/OrderDetailClient";
 import BackButton from "@/components/BackButton";
+import { DetailPageSkeleton } from "@/components/Skeletons";
 import type { Order, StaffMember } from "@/lib/types";
 
 function OrderDetailInner() {
@@ -62,11 +63,7 @@ function OrderDetailInner() {
   }, [id]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading order…" color="primary" />
-      </div>
-    );
+    return <DetailPageSkeleton />;
   }
 
   if (notFound || !order) {
@@ -83,13 +80,7 @@ function OrderDetailInner() {
 
 export default function OrderDetailPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex justify-center py-24">
-          <Spinner label="Loading order…" color="primary" />
-        </div>
-      }
-    >
+    <Suspense fallback={<DetailPageSkeleton />}>
       <OrderDetailInner />
     </Suspense>
   );

@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { PlusCircle } from "lucide-react";
 import { Button, Card, Chip, Spinner } from "@heroui/react";
+import { DashboardSkeleton } from "@/components/Skeletons";
 import { apiFetch } from "@/lib/api";
 import DashboardSearch from "@/components/DashboardSearch";
 import NavCard from "@/components/NavCard";
@@ -165,11 +168,7 @@ export default function HomePage() {
   }, [filter, orders, duesOrders, investedOrders]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading dashboard…" color="primary" />
-      </div>
-    );
+    return <DashboardSkeleton isAutoRides={false} />;
   }
 
   if (error) {
@@ -206,23 +205,47 @@ export default function HomePage() {
 
   return (
     <div className="space-y-10">
-      <section className="text-center py-6">
-        <p className="text-xl uppercase tracking-[0.9em] text-[#D9A427]" style={{ fontFamily: "var(--font-mono)" }}>
-          Anjaneya Decorations  V.K.M
+      <section className="text-center py-6 flex flex-col items-center">
+        {/* Logo on top of title - Same square format as shown in image */}
+        <div className="relative w-36 h-36 sm:w-44 sm:h-44 md:w-48 md:h-48 rounded-2xl sm:rounded-3xl overflow-hidden border-3 border-[#D9A427] shadow-2xl bg-[#241129] mb-4 shrink-0">
+          <Image
+            src="/logo-new.png"
+            alt="Anjaneya Decorations Logo"
+            fill
+            className="object-cover"
+            priority
+          />
+        </div>
+        <h1
+          className="text-3xl sm:text-5xl font-bold tracking-normal text-[#D9A427]"
+          style={{ fontFamily: "'Philosopher', var(--font-display), Georgia, serif" }}
+        >
+          Anjaneya Decorations
+        </h1>
+        <p
+          className="text-xs uppercase tracking-[0.3em] text-[#D9A427]/80 mt-1 font-semibold"
+          style={{ fontFamily: "'Philosopher', var(--font-mono), sans-serif" }}
+        >
+          Tent House · V.K.M
         </p>
-        <div className="max-w-xl mx-auto mt-6">
+
+        {/* Global Search Bar */}
+        <div className="w-full max-w-xl mx-auto mt-6 px-4">
           <DashboardSearch orders={orders} />
         </div>
+
+        {/* Create Order Button */}
         <Button
           as={Link}
           href="/orders/new"
           color="primary"
           size="lg"
-          radius="sm"
-          className="mt-5 font-semibold"
+          radius="full"
+          className="mt-5 font-bold text-[#241129] bg-primary shadow-md hover:bg-primary/90 px-8"
           style={{ fontFamily: "var(--font-display)" }}
+          startContent={<PlusCircle size={20} />}
         >
-          + Create Order
+          Create Order
         </Button>
       </section>
 

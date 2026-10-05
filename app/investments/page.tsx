@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import InvestmentsClient from "@/components/InvestmentsClient";
 import BackButton from "@/components/BackButton";
+import { InvestmentsSkeleton } from "@/components/Skeletons";
 import type { Investment } from "@/lib/types";
 
 export default function InvestmentsPage() {
@@ -39,6 +39,10 @@ export default function InvestmentsPage() {
     load();
   }, [load]);
 
+  if (isOwner && loading) {
+    return <InvestmentsSkeleton />;
+  }
+
   return (
     <div>
       <div className="mb-4">
@@ -50,12 +54,6 @@ export default function InvestmentsPage() {
       </h1>
 
       {!isOwner && <p className="text-center text-[#F8F4E6]/60 py-16">Investments are only visible to owner logins.</p>}
-
-      {isOwner && loading && (
-        <div className="flex justify-center py-16">
-          <Spinner label="Loading investments…" color="primary" />
-        </div>
-      )}
 
       {isOwner && !loading && error && <p className="text-center text-danger py-10">{error}</p>}
 

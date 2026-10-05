@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   Chip,
-  Spinner,
   useDisclosure,
 } from "@heroui/react";
 import {
@@ -24,6 +23,7 @@ import { useAuth } from "@/lib/Auth";
 import type { AutoDieselEntry, AutoDriver } from "@/lib/types";
 import BackButton from "@/components/BackButton";
 import AutoDieselModal from "@/components/autorides/AutoDieselModal";
+import { AutoDieselRepairSkeleton } from "@/components/Skeletons";
 
 export default function AutoDieselRepairPage() {
   const { user, loading: authLoading } = useAuth();
@@ -115,11 +115,7 @@ export default function AutoDieselRepairPage() {
   }
 
   if (authLoading || loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading diesel & repair expenses..." color="warning" />
-      </div>
-    );
+    return <AutoDieselRepairSkeleton />;
   }
 
   if (!isOwner) {

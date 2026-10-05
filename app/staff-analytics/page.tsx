@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import AllStaffAnalyticsTab from "@/components/AllStaffAnalyticsTab";
 import BackButton from "@/components/BackButton";
+import { StaffAnalyticsSkeleton } from "@/components/Skeletons";
 import type { StaffMember } from "@/lib/types";
 
 export default function StaffAnalyticsPage() {
@@ -41,6 +41,10 @@ export default function StaffAnalyticsPage() {
     };
   }, [isOwner]);
 
+  if (isOwner && loading) {
+    return <StaffAnalyticsSkeleton />;
+  }
+
   return (
     <div>
       <div className="mb-4">
@@ -52,12 +56,6 @@ export default function StaffAnalyticsPage() {
       </h1>
 
       {!isOwner && <p className="text-center text-[#F8F4E6]/60 py-16">Staff analytics are only visible to owner logins.</p>}
-
-      {isOwner && loading && (
-        <div className="flex justify-center py-16">
-          <Spinner label="Loading staff analytics…" color="primary" />
-        </div>
-      )}
 
       {isOwner && !loading && error && <p className="text-center text-danger py-10">{error}</p>}
 

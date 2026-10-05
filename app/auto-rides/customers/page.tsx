@@ -7,7 +7,6 @@ import {
   Card,
   Chip,
   Input,
-  Spinner,
   Modal,
   ModalContent,
   ModalHeader,
@@ -29,6 +28,8 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import type { AutoRide } from "@/lib/types";
 import BackButton from "@/components/BackButton";
+
+import { AutoCustomersSkeleton } from "@/components/Skeletons";
 
 interface AggregatedCustomer {
   key: string;
@@ -118,11 +119,7 @@ export default function AutoCustomersPage() {
   }, [rides, search]);
 
   if (authLoading || loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading auto customers..." color="warning" />
-      </div>
-    );
+    return <AutoCustomersSkeleton />;
   }
 
   if (!isOwner && !isDriver) {

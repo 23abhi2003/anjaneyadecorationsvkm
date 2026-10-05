@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import StaffClient from "@/components/StaffClient";
+import { StaffSkeleton } from "@/components/Skeletons";
 import type { StaffMember } from "@/lib/types";
 
 export default function StaffPage() {
@@ -31,11 +31,7 @@ export default function StaffPage() {
   }, [load]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading staff…" color="primary" />
-      </div>
-    );
+    return <StaffSkeleton />;
   }
 
   if (error) {

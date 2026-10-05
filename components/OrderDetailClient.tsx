@@ -20,6 +20,7 @@ import {
   DropdownItem,
 } from "@heroui/react";
 import Image from "next/image";
+import { Phone, MessageCircle } from "lucide-react";
 import type { Order, OrderStatus, CompletionStatus, StaffMember } from "@/lib/types";
 import { collectItemLines, mapsLinkForOrder, waLink, buildStaffWhatsAppMessage } from "@/lib/orderDisplay";
 import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile, type InvoiceLanguage } from "@/lib/pdf";
@@ -387,9 +388,41 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
           <h1 className="text-3xl font-semibold text-[#F8F4E6] mt-1" style={{ fontFamily: "var(--font-display)" }}>
             {order.customer?.name}
           </h1>
-          <p className="text-[#F8F4E6]/60 text-sm mt-1">
-            {order.customer?.phone} &middot; {order.program?.type || order.serviceType} &middot; {order.eventDate || "no date"}
-          </p>
+          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+            <p className="text-[#F8F4E6]/60 text-sm">
+              {order.customer?.phone || "No phone"} &middot; {order.program?.type || order.serviceType} &middot; {order.eventDate || "no date"}
+            </p>
+            {order.customer?.phone && (
+              <div className="flex items-center gap-2 no-print">
+                <Button
+                  as="a"
+                  href={`tel:${order.customer.phone.replace(/\D/g, "")}`}
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  radius="full"
+                  startContent={<Phone size={13} />}
+                  className="h-7 px-3 text-xs font-semibold"
+                >
+                  Call Customer
+                </Button>
+                <Button
+                  as="a"
+                  href={`https://wa.me/91${order.customer.phone.replace(/\D/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="sm"
+                  variant="flat"
+                  color="success"
+                  radius="full"
+                  startContent={<MessageCircle size={13} />}
+                  className="h-7 px-3 text-xs font-semibold"
+                >
+                  WhatsApp
+                </Button>
+              </div>
+            )}
+          </div>
           {order.customer?.address && <p className="text-[#F8F4E6]/50 text-sm mt-0.5">{order.customer.address}</p>}
           {order.customer?.referredBy?.trim() && (
             <p className="text-[#F8F4E6]/50 text-sm mt-0.5">Referred by {order.customer.referredBy.trim()}</p>

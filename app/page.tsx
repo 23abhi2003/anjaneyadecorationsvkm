@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Phone, MessageCircle } from "lucide-react";
 import { Button, Card, Chip, Spinner } from "@heroui/react";
 import { DashboardSkeleton } from "@/components/Skeletons";
 import { apiFetch } from "@/lib/api";
@@ -122,6 +122,27 @@ export default function HomePage() {
     () => investments.reduce((sum, i) => sum + (parseFloat(i.amount || "0") || 0), 0),
     [investments]
   );
+
+  const customerPhoneMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of customers) {
+      if (c.phone) {
+        if (c.id) map.set(c.id, c.phone);
+        if (c.name) map.set(c.name.trim().toLowerCase(), c.phone);
+      }
+    }
+    return map;
+  }, [customers]);
+
+  function getOrderPhone(o: Order): string {
+    const direct = o.customer?.phone?.trim();
+    if (direct) return direct;
+    const name = o.customer?.name?.trim().toLowerCase();
+    if (name && customerPhoneMap.has(name)) {
+      return customerPhoneMap.get(name)!;
+    }
+    return "";
+  }
 
   // Owner-facing totals across ALL orders — same calculation as the Invoices
   // tab's summary row (total, dues, staff pay, invested, profit).
@@ -387,22 +408,68 @@ export default function HomePage() {
           <p className="text-sm text-foreground/60">Nothing due in the next 3 days.</p>
         ) : (
           <div className="space-y-2">
-            {upcoming.map((o) => (
-              <Link
-                key={o.id}
-                href={`/orders/detail?id=${encodeURIComponent(o.id)}`}
-                className="flex items-center justify-between px-4 py-2.5 rounded-md bg-content2 hover:brightness-95 transition-all"
-              >
-                <span className="text-sm text-foreground">
-                  <span className="text-foreground/40 mr-1">{o.id}</span>
-                  <strong>{o.customer?.name}</strong>{" "}
-                  <span className="text-foreground/50">— {programLabel(o)}</span>
-                </span>
-                <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
-                  {o.eventDate}
-                </span>
-              </Link>
-            ))}
+            {upcoming.map((o) => {
+              const phone = getOrderPhone(o);
+              const cleanPhone = phone.replace(/\D/g, "");
+              return (
+                <Link
+                  key={o.id}
+                  href={`/orders/detail?id=${encodeURIComponent(o.id)}`}
+                  className="flex items-center justify-between px-4 py-2.5 rounded-md bg-content2 hover:brightness-95 transition-all gap-3"
+                >
+                  <span className="text-sm text-foreground truncate flex-1">
+                    <span className="text-foreground/40 mr-1">{o.id}</span>
+                    <strong>{o.customer?.name}</strong>{" "}
+                    <span className="text-foreground/50">— {programLabel(o)}</span>
+                  </span>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
+                      {o.eventDate}
+                    </span>
+                    {cleanPhone && (
+                      <div
+                        className="flex items-center gap-1.5 shrink-0"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                      >
+                        <Button
+                          as="a"
+                          href={`tel:${cleanPhone}`}
+                          size="sm"
+                          isIconOnly
+                          variant="flat"
+                          color="primary"
+                          radius="full"
+                          aria-label={`Call ${o.customer?.name || "customer"}`}
+                          title={`Call ${phone}`}
+                          className="w-7 h-7 min-w-7"
+                        >
+                          <Phone size={13} />
+                        </Button>
+                        <Button
+                          as="a"
+                          href={`https://wa.me/91${cleanPhone}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          size="sm"
+                          isIconOnly
+                          variant="flat"
+                          color="success"
+                          radius="full"
+                          aria-label={`WhatsApp ${o.customer?.name || "customer"}`}
+                          title={`WhatsApp ${phone}`}
+                          className="w-7 h-7 min-w-7"
+                        >
+                          <MessageCircle size={13} />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>
@@ -424,46 +491,92 @@ export default function HomePage() {
           </div>
         </div>
         <div className="space-y-2">
-          {displayedOrders.map((o) => (
-            <Link
-              key={o.id}
-              href={`/orders/detail?id=${encodeURIComponent(o.id)}`}
-              className="flex items-center justify-between px-4 py-2.5 rounded-md bg-content2 hover:brightness-95 transition-all"
-            >
-              <span className="text-sm text-foreground">
-                <span className="text-foreground/40 mr-1">{o.id}</span>
-                {o.customer?.name}
-              </span>
-              {filter === "amount" ? (
-                <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
-                  ₹{orderTotal(o).toLocaleString("en-IN")} total
+          {displayedOrders.map((o) => {
+            const phone = getOrderPhone(o);
+            const cleanPhone = phone.replace(/\D/g, "");
+            return (
+              <Link
+                key={o.id}
+                href={`/orders/detail?id=${encodeURIComponent(o.id)}`}
+                className="flex items-center justify-between px-4 py-2.5 rounded-md bg-content2 hover:brightness-95 transition-all gap-3"
+              >
+                <span className="text-sm text-foreground truncate flex-1">
+                  <span className="text-foreground/40 mr-1">{o.id}</span>
+                  {o.customer?.name}
                 </span>
-              ) : filter === "dues" ? (
-                <span className="text-xs text-warning" style={{ fontFamily: "var(--font-mono)" }}>
-                  ₹{orderDue(o).toLocaleString("en-IN")} due
-                </span>
-              ) : filter === "staff" ? (
-                <span className="text-xs" style={{ fontFamily: "var(--font-mono)", color: "#8B4A15" }}>
-                  ₹{orderStaffAmount(o).toLocaleString("en-IN")} staff
-                </span>
-              ) : filter === "invested" ? (
-                <span className="text-xs text-primary" style={{ fontFamily: "var(--font-mono)" }}>
-                  ₹{orderInvestment(o).toLocaleString("en-IN")} invested
-                </span>
-              ) : filter === "profit" ? (
-                <span
-                  className={`text-xs ${orderProfit(o) < 0 ? "text-danger" : "text-success"}`}
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  ₹{orderProfit(o).toLocaleString("en-IN")} profit
-                </span>
-              ) : (
-                <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-                  {o.serviceType} &middot; {o.status}
-                </span>
-              )}
-            </Link>
-          ))}
+                <div className="flex items-center gap-2.5 shrink-0">
+                  {filter === "amount" ? (
+                    <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
+                      ₹{orderTotal(o).toLocaleString("en-IN")} total
+                    </span>
+                  ) : filter === "dues" ? (
+                    <span className="text-xs text-warning" style={{ fontFamily: "var(--font-mono)" }}>
+                      ₹{orderDue(o).toLocaleString("en-IN")} due
+                    </span>
+                  ) : filter === "staff" ? (
+                    <span className="text-xs" style={{ fontFamily: "var(--font-mono)", color: "#8B4A15" }}>
+                      ₹{orderStaffAmount(o).toLocaleString("en-IN")} staff
+                    </span>
+                  ) : filter === "invested" ? (
+                    <span className="text-xs text-primary" style={{ fontFamily: "var(--font-mono)" }}>
+                      ₹{orderInvestment(o).toLocaleString("en-IN")} invested
+                    </span>
+                  ) : filter === "profit" ? (
+                    <span
+                      className={`text-xs ${orderProfit(o) < 0 ? "text-danger" : "text-success"}`}
+                      style={{ fontFamily: "var(--font-mono)" }}
+                    >
+                      ₹{orderProfit(o).toLocaleString("en-IN")} profit
+                    </span>
+                  ) : (
+                    <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+                      {o.serviceType} &middot; {o.status}
+                    </span>
+                  )}
+                  {cleanPhone && (
+                    <div
+                      className="flex items-center gap-1.5 shrink-0"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
+                      <Button
+                        as="a"
+                        href={`tel:${cleanPhone}`}
+                        size="sm"
+                        isIconOnly
+                        variant="flat"
+                        color="primary"
+                        radius="full"
+                        aria-label={`Call ${o.customer?.name || "customer"}`}
+                        title={`Call ${phone}`}
+                        className="w-7 h-7 min-w-7"
+                      >
+                        <Phone size={13} />
+                      </Button>
+                      <Button
+                        as="a"
+                        href={`https://wa.me/91${cleanPhone}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        size="sm"
+                        isIconOnly
+                        variant="flat"
+                        color="success"
+                        radius="full"
+                        aria-label={`WhatsApp ${o.customer?.name || "customer"}`}
+                        title={`WhatsApp ${phone}`}
+                        className="w-7 h-7 min-w-7"
+                      >
+                        <MessageCircle size={13} />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
           {displayedOrders.length === 0 && (
             <p className="text-sm text-foreground/60 py-4 text-center">
               {filter === "dues"

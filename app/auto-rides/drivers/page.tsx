@@ -8,7 +8,6 @@ import {
   CardBody,
   Chip,
   Input,
-  Spinner,
   useDisclosure,
   Modal,
   ModalContent,
@@ -37,6 +36,7 @@ import BackButton from "@/components/BackButton";
 import AddDriverModal from "@/components/autorides/AddDriverModal";
 import DriverPayoutModal from "@/components/autorides/DriverPayoutModal";
 import DriverBorrowModal from "@/components/autorides/DriverBorrowModal";
+import { AutoDriversSkeleton } from "@/components/Skeletons";
 
 export default function AutoDriversPage() {
   const { user, loading: authLoading } = useAuth();
@@ -228,11 +228,7 @@ export default function AutoDriversPage() {
   }
 
   if (authLoading || loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading pilots..." color="warning" />
-      </div>
-    );
+    return <AutoDriversSkeleton />;
   }
 
   return (

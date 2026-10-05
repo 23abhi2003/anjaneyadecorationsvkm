@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import InvoicesTab from "@/components/InvoicesTab";
 import BackButton from "@/components/BackButton";
+import { InvoicesSkeleton } from "@/components/Skeletons";
 import type { Investment, Order } from "@/lib/types";
 
 export default function InvoicesPage() {
@@ -50,6 +50,10 @@ export default function InvoicesPage() {
     };
   }, [isOwner]);
 
+  if (isOwner && loading) {
+    return <InvoicesSkeleton />;
+  }
+
   return (
     <div>
       <div className="mb-4">
@@ -61,12 +65,6 @@ export default function InvoicesPage() {
       </h1>
 
       {!isOwner && <p className="text-center text-[#F8F4E6]/60 py-16">Invoices are only visible to owner logins.</p>}
-
-      {isOwner && loading && (
-        <div className="flex justify-center py-16">
-          <Spinner label="Loading invoices…" color="primary" />
-        </div>
-      )}
 
       {isOwner && !loading && error && <p className="text-center text-danger py-10">{error}</p>}
 

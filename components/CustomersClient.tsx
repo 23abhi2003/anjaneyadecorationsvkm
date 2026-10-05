@@ -23,7 +23,7 @@ import {
   ModalFooter,
   useDisclosure,
 } from "@heroui/react";
-import { LayoutGrid, List as ListIcon, Search } from "lucide-react";
+import { LayoutGrid, List as ListIcon, Search, Phone, MessageCircle } from "lucide-react";
 import { withOrderCounts, type CustomerWithCount } from "@/lib/customer";
 import type { Customer, CustomerType, Order } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
@@ -378,33 +378,76 @@ export default function CustomersClient({
               <TableColumn>{isOwner ? "ACTIONS" : ""}</TableColumn>
             </TableHeader>
             <TableBody emptyContent="No customers match these filters.">
-              {paged.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell>{c.phone || "—"}</TableCell>
-                  <TableCell>
-                    <Chip size="sm" variant="flat" color={c.type === "older" ? "secondary" : "warning"}>
-                      {c.type}
-                    </Chip>
-                  </TableCell>
-                  <TableCell>{c.referredBy?.trim() || "—"}</TableCell>
-                  <TableCell>{c.orderCount}</TableCell>
-                  <TableCell>
-                    {isOwner ? (
-                      <Button
-                        size="sm"
-                        variant="bordered"
-                        color="danger"
-                        radius="sm"
-                        className="no-print"
-                        onPress={() => askDelete(c)}
-                      >
-                        Delete
-                      </Button>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {paged.map((c) => {
+                const cleanPhone = c.phone ? c.phone.replace(/\D/g, "") : "";
+                return (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell>
+                      {c.phone ? (
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm">{c.phone}</span>
+                          <div className="flex items-center gap-1 no-print">
+                            <Button
+                              as="a"
+                              href={`tel:${cleanPhone}`}
+                              size="sm"
+                              isIconOnly
+                              variant="flat"
+                              color="primary"
+                              radius="full"
+                              aria-label={`Call ${c.name}`}
+                              title={`Call ${c.phone}`}
+                              className="w-7 h-7 min-w-7 bg-primary/20 hover:bg-primary text-[#241129]"
+                            >
+                              <Phone size={13} />
+                            </Button>
+                            <Button
+                              as="a"
+                              href={`https://wa.me/91${cleanPhone}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              size="sm"
+                              isIconOnly
+                              variant="flat"
+                              color="success"
+                              radius="full"
+                              aria-label={`WhatsApp ${c.name}`}
+                              title={`WhatsApp ${c.phone}`}
+                              className="w-7 h-7 min-w-7 bg-success/20 hover:bg-success text-white"
+                            >
+                              <MessageCircle size={13} />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip size="sm" variant="flat" color={c.type === "older" ? "secondary" : "warning"}>
+                        {c.type}
+                      </Chip>
+                    </TableCell>
+                    <TableCell>{c.referredBy?.trim() || "—"}</TableCell>
+                    <TableCell>{c.orderCount}</TableCell>
+                    <TableCell>
+                      {isOwner ? (
+                        <Button
+                          size="sm"
+                          variant="bordered"
+                          color="danger"
+                          radius="sm"
+                          className="no-print"
+                          onPress={() => askDelete(c)}
+                        >
+                          Delete
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -414,30 +457,69 @@ export default function CustomersClient({
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {paged.map((c) => (
-            <Card key={c.id} className="bg-content1 border border-divider">
-              <CardBody className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold truncate">{c.name}</p>
-                  <Chip size="sm" variant="flat" color={c.type === "older" ? "secondary" : "warning"}>
-                    {c.type}
-                  </Chip>
-                </div>
-                <p className="text-sm text-foreground/70">{c.phone || "no phone on file"}</p>
-                <p className="text-xs text-foreground/50">Referred by: {c.referredBy?.trim() || "—"}</p>
-                <div className="flex items-center justify-between pt-2 border-t border-divider/60">
-                  <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-                    {c.orderCount} order{c.orderCount === 1 ? "" : "s"}
-                  </span>
-                  {isOwner && (
-                    <Button size="sm" variant="bordered" color="danger" radius="sm" className="no-print" onPress={() => askDelete(c)}>
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-          ))}
+          {paged.map((c) => {
+            const cleanPhone = c.phone ? c.phone.replace(/\D/g, "") : "";
+            return (
+              <Card key={c.id} className="bg-content1 border border-divider">
+                <CardBody className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold truncate">{c.name}</p>
+                    <Chip size="sm" variant="flat" color={c.type === "older" ? "secondary" : "warning"}>
+                      {c.type}
+                    </Chip>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm text-foreground/70 font-mono">{c.phone || "no phone on file"}</p>
+                    {cleanPhone && (
+                      <div className="flex items-center gap-1.5 no-print">
+                        <Button
+                          as="a"
+                          href={`tel:${cleanPhone}`}
+                          size="sm"
+                          isIconOnly
+                          variant="flat"
+                          color="primary"
+                          radius="full"
+                          aria-label={`Call ${c.name}`}
+                          title={`Call ${c.phone}`}
+                          className="w-7 h-7 min-w-7 bg-primary/20 hover:bg-primary text-[#241129]"
+                        >
+                          <Phone size={13} />
+                        </Button>
+                        <Button
+                          as="a"
+                          href={`https://wa.me/91${cleanPhone}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          size="sm"
+                          isIconOnly
+                          variant="flat"
+                          color="success"
+                          radius="full"
+                          aria-label={`WhatsApp ${c.name}`}
+                          title={`WhatsApp ${c.phone}`}
+                          className="w-7 h-7 min-w-7 bg-success/20 hover:bg-success text-white"
+                        >
+                          <MessageCircle size={13} />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-foreground/50">Referred by: {c.referredBy?.trim() || "—"}</p>
+                  <div className="flex items-center justify-between pt-2 border-t border-divider/60">
+                    <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
+                      {c.orderCount} order{c.orderCount === 1 ? "" : "s"}
+                    </span>
+                    {isOwner && (
+                      <Button size="sm" variant="bordered" color="danger" radius="sm" className="no-print" onPress={() => askDelete(c)}>
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                </CardBody>
+              </Card>
+            );
+          })}
         </div>
       )}
 

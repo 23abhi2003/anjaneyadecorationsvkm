@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, Spinner } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { BarChart3, TrendingUp, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import type { AutoRide, AutoDriver, AutoDieselEntry } from "@/lib/types";
 import BackButton from "@/components/BackButton";
 import AutoRidesAnalyticsCard from "@/components/autorides/AutoRidesAnalyticsCard";
+import { AutoRidesAnalyticsSkeleton } from "@/components/Skeletons";
 
 export default function AutoRidesAnalyticsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -53,11 +54,7 @@ export default function AutoRidesAnalyticsPage() {
   }, []);
 
   if (authLoading || loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading Auto Rides Analytics..." color="warning" />
-      </div>
-    );
+    return <AutoRidesAnalyticsSkeleton />;
   }
 
   if (!isOwner) {

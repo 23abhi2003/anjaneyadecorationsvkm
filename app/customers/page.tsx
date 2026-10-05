@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import CustomersClient from "@/components/CustomersClient";
+import { CustomersSkeleton } from "@/components/Skeletons";
 import { withOrderCounts, type CustomerWithCount } from "@/lib/customer";
 import type { Order, Customer } from "@/lib/types";
 
@@ -39,11 +39,7 @@ export default function CustomersPage() {
   }, [load]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner label="Loading customers…" color="primary" />
-      </div>
-    );
+    return <CustomersSkeleton />;
   }
 
   if (error) {

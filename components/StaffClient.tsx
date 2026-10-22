@@ -164,11 +164,22 @@ export default function StaffClient({
                       <Chip color="warning" variant="flat">
                         {inr(pay.total)}
                       </Chip>
-                      {pay.paid > 0 && (
-                        <Chip color="success" variant="flat" size="sm">
-                          Paid {inr(pay.paid)}
-                        </Chip>
-                      )}
+                      <div className="flex flex-wrap items-center justify-end gap-1">
+                        {pay.paid > 0 && (
+                          <Chip color="success" variant="flat" size="sm">
+                            Paid {inr(pay.paid)}
+                          </Chip>
+                        )}
+                        {pay.due > 0 ? (
+                          <Chip color="danger" variant="flat" size="sm">
+                            Due {inr(pay.due)}
+                          </Chip>
+                        ) : pay.total > 0 ? (
+                          <Chip color="success" variant="flat" size="sm">
+                            Due {inr(0)}
+                          </Chip>
+                        ) : null}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -242,13 +253,13 @@ export default function StaffClient({
                         <span className="text-foreground/50">Total earnings: </span>
                         <span className="text-warning font-semibold">{inr(pay.total)}</span>
                       </p>
-                      {isOwner && (
+                      {canManage && (
                         <p className="text-sm text-foreground/70">
                           <span className="text-foreground/50">Paid (incl. advances): </span>
                           <span className="text-success font-semibold">{inr(pay.paid)}</span>
                         </p>
                       )}
-                      {isOwner && (
+                      {canManage && (
                         <p className="text-sm text-foreground/70">
                           <span className="text-foreground/50">Still due: </span>
                           <span className="text-danger font-semibold">{inr(pay.due)}</span>

@@ -64,6 +64,8 @@ interface RowEditState {
   paymentStatus: StaffPaymentStatus;
 }
 
+type PaymentFilter = "all" | StaffPaymentStatus;
+
 export default function StaffAssignmentsClient({
   staff,
   onChanged,
@@ -78,6 +80,7 @@ export default function StaffAssignmentsClient({
 
   const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
   const [orderQuery, setOrderQuery] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
   const [sortOrder, setSortOrder] = useState<AssignmentSort>("newest");
   // Opening a staff member's assignments (or an invoice) goes straight to grid view.
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
@@ -105,21 +108,29 @@ export default function StaffAssignmentsClient({
   // strand the view on a page that no longer exists.
   useEffect(() => {
     setPage(1);
-  }, [orderQuery, range, sortOrder, pageSize]);
+  }, [orderQuery, range, paymentFilter, sortOrder, pageSize]);
 
   // All hooks must run unconditionally before any early return below.
   const filtered = useMemo(
     () =>
       sortAssignmentsByDate(
-        (staff.assignments || []).filter((a) => withinRange(a.date, range) && matchesOrderQuery(a, orderQuery)),
+        (staff.assignments || []).filter((a) => {
+          if (!withinRange(a.date, range)) return false;
+          if (!matchesOrderQuery(a, orderQuery)) return false;
+          if (paymentFilter !== "all") {
+            const money = assignmentMoney(a);
+            if (money.status !== paymentFilter) return false;
+          }
+          return true;
+        }),
         sortOrder
       ),
-    [staff.assignments, range, orderQuery, sortOrder]
+    [staff.assignments, range, orderQuery, paymentFilter, sortOrder]
   );
   // Total always reflects everything active above: the order filter AND the date range.
   const totals = summarizeAssignments(filtered);
   const totalOrders = (staff.assignments || []).length;
-  const filtersActive = !!range || orderQuery.trim() !== "";
+  const filtersActive = !!range || orderQuery.trim() !== "" || paymentFilter !== "all";
 
   // Page is clamped against the current filtered length, so a filter change that shrinks
   // the list (or a fresh assignment being added) never strands the view on an empty page.
@@ -129,6 +140,7 @@ export default function StaffAssignmentsClient({
   function clearFilters(): void {
     setRange(null);
     setOrderQuery("");
+    setPaymentFilter("all");
     setPage(1);
   }
 
@@ -251,6 +263,27 @@ export default function StaffAssignmentsClient({
               maxValue={today(getLocalTimeZone())}
               className="max-w-xs"
             />
+            <Select
+              label="Payment status"
+              variant="bordered"
+              selectedKeys={[paymentFilter]}
+              onSelectionChange={(keys) => {
+                const next = Array.from(keys)[0] as PaymentFilter | undefined;
+                if (next) setPaymentFilter(next);
+              }}
+              disallowEmptySelection
+              className="max-w-48"
+            >
+              <SelectItem key="all" textValue="All (due & paid)">
+                All (due &amp; paid)
+              </SelectItem>
+              <SelectItem key="due" textValue="Due">
+                Due
+              </SelectItem>
+              <SelectItem key="paid" textValue="Paid">
+                Paid
+              </SelectItem>
+            </Select>
             <Select
               label="Sort by date"
               variant="bordered"

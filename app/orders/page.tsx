@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Button, Card, CardBody, Checkbox, Chip, Input, Select, SelectItem } from "@heroui/react";
+import { Button, Card, CardBody, Checkbox, Chip, DateRangePicker, Input, Select, SelectItem } from "@heroui/react";
 import { Search, Phone, MessageCircle } from "lucide-react";
+import type { DateValue } from "@react-types/datepicker";
+import type { RangeValue } from "@react-types/shared";
+import { getLocalTimeZone } from "@internationalized/date";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { generateCombinedOrdersPdf } from "@/lib/pdf";
@@ -20,6 +23,24 @@ const statusColor: Record<OrderStatus, "warning" | "success" | "secondary"> = {
 };
 
 type StatusFilter = "all" | OrderStatus;
+
+/** Parses an order/event date string (YYYY-MM-DD or ISO) into a comparable Date, tolerating blanks. */
+function toDate(d?: string | null): Date | null {
+  if (!d) return null;
+  const clean = d.includes("T") ? d.slice(0, 10) : d;
+  const parsed = new Date(clean + "T00:00:00");
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function withinRange(dateStr: string | null | undefined, range: RangeValue<DateValue> | null): boolean {
+  if (!range) return true;
+  const d = toDate(dateStr);
+  if (!d) return false;
+  const start = range.start.toDate(getLocalTimeZone());
+  const end = range.end.toDate(getLocalTimeZone());
+  end.setHours(23, 59, 59, 999);
+  return d >= start && d <= end;
+}
 
 function orderTotal(o: Order): number {
   return parseFloat(o.invoice?.totalAmount || "0") || 0;
@@ -180,11 +201,13 @@ export default function OrdersPage() {
   // ---- filters ----
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const filtersActive = !!search || statusFilter !== "all";
+  const [dateRange, setDateRange] = useState<RangeValue<DateValue> | null>(null);
+  const filtersActive = !!search || statusFilter !== "all" || !!dateRange;
 
   function clearFilters(): void {
     setSearch("");
     setStatusFilter("all");
+    setDateRange(null);
     setPage(1);
   }
 
@@ -232,12 +255,13 @@ export default function OrdersPage() {
   const filtered = useMemo(() => {
     return orders
       .filter((o) => matchesSearch(o, search))
-      .filter((o) => statusFilter === "all" || o.status === statusFilter);
-  }, [orders, search, statusFilter]);
+      .filter((o) => statusFilter === "all" || o.status === statusFilter)
+      .filter((o) => withinRange(o.eventDate || (o.createdAt ? o.createdAt.slice(0, 10) : undefined), dateRange));
+  }, [orders, search, statusFilter, dateRange]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, dateRange]);
 
   const currentPage = clampPage(page, filtered.length, pageSize);
   const paged = useMemo(() => paginate(filtered, currentPage, pageSize), [filtered, currentPage, pageSize]);
@@ -304,6 +328,13 @@ export default function OrdersPage() {
           <SelectItem key="confirmed">Confirmed</SelectItem>
           <SelectItem key="completed">Completed</SelectItem>
         </Select>
+        <DateRangePicker
+          label="Date range"
+          variant="bordered"
+          value={dateRange}
+          onChange={setDateRange}
+          className="max-w-xs"
+        />
         {filtersActive && (
           <Button size="sm" variant="light" onPress={clearFilters}>
             Clear filters

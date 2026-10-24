@@ -928,7 +928,14 @@ export default function OrderWizard({
                   Skip / later
                 </Button>
               </div>
-              <QtyGrid options={FLOWER_TYPES} values={form.decoration.flowers} onChange={(k, v) => setQty("decoration.flowers", k, v)} />
+              <QtyGrid
+                options={FLOWER_TYPES}
+                values={form.decoration.flowers}
+                onChange={(k, v) => setQty("decoration.flowers", k, v)}
+                inputType="text"
+                addLabel="Flower type"
+                addButtonLabel="+ Add flower type"
+              />
             </>
           )}
 

@@ -20,6 +20,8 @@ interface QtyGridProps {
   addLabel?: string;
   /** Text on the button that opens the add-item form. */
   addButtonLabel?: string;
+  /** Input type for the quantities. "number" restricts to numeric, "text" allows numbers and letters. */
+  inputType?: "number" | "text";
 }
 
 export default function QtyGrid({
@@ -30,6 +32,7 @@ export default function QtyGrid({
   allowCustom = true,
   addLabel = "Item name",
   addButtonLabel = "+ Add item",
+  inputType = "number",
 }: QtyGridProps) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -70,8 +73,8 @@ export default function QtyGrid({
           {options.map((opt) => (
             <Input
               key={opt}
-              type="number"
-              min={0}
+              type={inputType}
+              min={inputType === "number" ? 0 : undefined}
               label={unitLabel ? `${opt} ${unitLabel}` : opt}
               variant="bordered"
               size="sm"
@@ -82,8 +85,8 @@ export default function QtyGrid({
           {extraKeys.map((key) => (
             <div key={key} className="flex items-end gap-1">
               <Input
-                type="number"
-                min={0}
+                type={inputType}
+                min={inputType === "number" ? 0 : undefined}
                 autoFocus
                 label={unitLabel ? `${key} ${unitLabel}` : key}
                 placeholder="Qty"

@@ -48,6 +48,20 @@ function orderDate(o: Order): string | null {
   return o.eventDate || o.createdAt || null;
 }
 
+/** Calculates the financial figures for an order.
+ * A fully completed order (work done + payment done) has its total collected in full
+ * and zero remaining due, regardless of the initial booking advance amount. */
+function orderFinancials(o: Order) {
+  const total = parseFloat(o.invoice?.totalAmount || "0") || 0;
+  const advance = parseFloat(o.invoice?.advancePaid || "0") || 0;
+  if (o.status === "completed") {
+    return { total, collected: total, due: 0 };
+  }
+  const collected = Math.min(advance, total);
+  const due = Math.max(total - collected, 0);
+  return { total, collected, due };
+}
+
 export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff: StaffMember[] }) {
   const [range, setRange] = useState<RangeValue<DateValue> | null>(null);
 
@@ -59,10 +73,11 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
       const d = toDate(orderDate(o));
       if (!d) return;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+      const label = d.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
       const entry = map.get(key) || { month: label, revenue: 0, collected: 0 };
-      entry.revenue += parseFloat(o.invoice?.totalAmount || "0") || 0;
-      entry.collected += parseFloat(o.invoice?.advancePaid || "0") || 0;
+      const f = orderFinancials(o);
+      entry.revenue += f.total;
+      entry.collected += f.collected;
       map.set(key, entry);
     });
     return Array.from(map.entries())
@@ -137,9 +152,18 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
 
   const SPLIT_COLORS: Record<string, string> = { Staff: "#8B4A15", Investment: "#D9A427", Profit: "#3F6B1F" };
 
-  const totalRevenue = filtered.reduce((sum, o) => sum + (parseFloat(o.invoice?.totalAmount || "0") || 0), 0);
-  const totalCollected = filtered.reduce((sum, o) => sum + (parseFloat(o.invoice?.advancePaid || "0") || 0), 0);
-  const totalDue = Math.max(totalRevenue - totalCollected, 0);
+  const { totalRevenue, totalCollected, totalDue } = useMemo(() => {
+    return filtered.reduce(
+      (acc, o) => {
+        const f = orderFinancials(o);
+        acc.totalRevenue += f.total;
+        acc.totalCollected += f.collected;
+        acc.totalDue += f.due;
+        return acc;
+      },
+      { totalRevenue: 0, totalCollected: 0, totalDue: 0 }
+    );
+  }, [filtered]);
   const totalOrderCount = filtered.length;
 
   /** Per-staff money overview: orders assigned, total earned, borrowed, and what's left after
@@ -154,6 +178,8 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
           name: s.name,
           orders: (s.assignments || []).length,
           total: pay.total,
+          paid: pay.paid,
+          due: pay.due,
           borrowed: bal.borrowed,
           remaining: bal.remaining,
         };
@@ -378,11 +404,13 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
             <p className="text-sm text-foreground/50 py-10 text-center">No staff activity yet.</p>
           ) : (
             <div className="overflow-x-auto mt-3">
-              <Table removeWrapper aria-label="Staff overview" className="min-w-[560px]">
+              <Table removeWrapper aria-label="Staff overview" className="min-w-[640px]">
                 <TableHeader>
                   <TableColumn>STAFF</TableColumn>
                   <TableColumn>ORDERS</TableColumn>
                   <TableColumn>TOTAL AMOUNT</TableColumn>
+                  <TableColumn>PAID</TableColumn>
+                  <TableColumn>DUE</TableColumn>
                   <TableColumn>BORROWED</TableColumn>
                   <TableColumn>REMAINING</TableColumn>
                 </TableHeader>
@@ -392,6 +420,8 @@ export default function AnalyticsTab({ orders, staff }: { orders: Order[]; staff
                       <TableCell className="font-semibold">{s.name}</TableCell>
                       <TableCell>{s.orders}</TableCell>
                       <TableCell className="text-secondary font-semibold">{inr(s.total)}</TableCell>
+                      <TableCell className="text-success font-semibold">{inr(s.paid)}</TableCell>
+                      <TableCell className={s.due > 0 ? "text-warning font-semibold" : ""}>{inr(s.due)}</TableCell>
                       <TableCell className="text-warning font-semibold">{inr(s.borrowed)}</TableCell>
                       <TableCell className={`font-semibold ${s.remaining < 0 ? "text-danger" : "text-success"}`}>
                         {inr(s.remaining)}

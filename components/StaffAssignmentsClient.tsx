@@ -633,6 +633,7 @@ export default function StaffAssignmentsClient({
             itemLabel="assignments"
             onPageChange={setPage}
             onPageSizeChange={setPageSize}
+            tone="light"
           />
 
           {filtered.length > 0 && (isOwner || isSelf) && (

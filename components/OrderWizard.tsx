@@ -18,6 +18,7 @@ import {
 import QtyGrid from "@/components/QtyGrid";
 import QtyField from "@/components/QtyField";
 import LocationField from "@/components/LocationField";
+import FlowerBillScanner from "@/components/FlowerBillScanner";
 import { CustomerNameSuggestInput, ReferralNameSuggestInput } from "@/components/CustomerAutocompleteField";
 import { loadCustomerDirectory, type ContactDirectoryItem } from "@/lib/customerSuggestions";
 import { apiFetch } from "@/lib/api";
@@ -123,6 +124,9 @@ const emptyForm: WizardForm = {
     ceilingPoles: {},
     flowers: {},
     framesExtra: {},
+    flowerItems: [],
+    flowerTotalAmount: "",
+    flowerReceiptImage: "",
   },
   staffAssigned: [],
   invoice: { totalAmount: "", advancePaid: "", paymentType: "", investment: "" },
@@ -922,21 +926,58 @@ export default function OrderWizard({
           )}
 
           {step === "flowers" && (
-            <>
+            <div className="space-y-4">
               <div className="flex justify-end">
                 <Button size="sm" variant="bordered" color="warning" onPress={next}>
                   Skip / later
                 </Button>
               </div>
-              <QtyGrid
-                options={FLOWER_TYPES}
-                values={form.decoration.flowers}
-                onChange={(k, v) => setQty("decoration.flowers", k, v)}
-                inputType="text"
-                addLabel="Flower type"
-                addButtonLabel="+ Add flower type"
+
+              <FlowerBillScanner
+                initialItems={form.decoration.flowerItems}
+                initialReceiptImage={form.decoration.flowerReceiptImage}
+                initialTotalAmount={form.decoration.flowerTotalAmount}
+                onApply={(scannedItems, totalAmount, receiptImg, updateInvestment) => {
+                  const nextFlowers = { ...form.decoration.flowers };
+                  scannedItems.forEach((it) => {
+                    if (it.name.trim()) {
+                      const desc = it.amount
+                        ? (it.qty ? `${it.qty} (₹${it.amount})` : `₹${it.amount}`)
+                        : it.qty || "1";
+                      nextFlowers[it.name.trim()] = desc;
+                    }
+                  });
+                  setForm((prev) => ({
+                    ...prev,
+                    decoration: {
+                      ...prev.decoration,
+                      flowers: nextFlowers,
+                      flowerItems: scannedItems,
+                      flowerTotalAmount: totalAmount,
+                      flowerReceiptImage: receiptImg,
+                    },
+                    invoice:
+                      updateInvestment && totalAmount
+                        ? { ...prev.invoice, investment: totalAmount }
+                        : prev.invoice,
+                  }));
+                }}
               />
-            </>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-secondary mb-2" style={{ fontFamily: "var(--font-mono)" }}>
+                  Flower Types &amp; Quantities
+                </p>
+                <QtyGrid
+                  options={FLOWER_TYPES}
+                  values={form.decoration.flowers}
+                  onChange={(k, v) => setQty("decoration.flowers", k, v)}
+                  inputType="text"
+                  addLabel="Flower type"
+                  addButtonLabel="+ Add flower type"
+                />
+              </div>
+            </div>
           )}
 
           {step === "staff" && (

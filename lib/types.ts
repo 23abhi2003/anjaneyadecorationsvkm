@@ -68,6 +68,12 @@ export interface TenthouseInfo {
   extrasExtra: QtyMap;
 }
 
+export interface FlowerBillItem {
+  name: string;
+  qty: string;
+  amount: string;
+}
+
 export interface DecorationInfo {
   frames: QtyMap;
   woodenTables: string;
@@ -85,6 +91,12 @@ export interface DecorationInfo {
   flowers: QtyMap;
   /** Extra items typed in on the "Frames, stage & lighting" step, beyond the fixed fields above. */
   framesExtra: QtyMap;
+  /** Scanned or entered flower line items with amounts from bill / slip */
+  flowerItems?: FlowerBillItem[];
+  /** Total flower bill amount in rupees */
+  flowerTotalAmount?: string;
+  /** Scanned flower receipt / slip image data URL */
+  flowerReceiptImage?: string;
 }
 
 /** Has the owner fully settled what a staff member is owed for one job? ("paid" = fully settled) */

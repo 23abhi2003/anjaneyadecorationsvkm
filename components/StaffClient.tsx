@@ -18,7 +18,7 @@ import {
 import type { StaffMember } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import { inr, staffBalance, summarizeAssignments } from "@/lib/staffPay";
+import { inr, staffBalance, summarizeAssignments, groupAssignmentsBySettlement } from "@/lib/staffPay";
 import BackButton from "@/components/BackButton";
 
 interface StaffFormState {
@@ -148,6 +148,7 @@ export default function StaffClient({
         {visibleStaff.map((s) => {
           const pay = summarizeAssignments(s.assignments || []);
           const bal = staffBalance(s.assignments, s.borrows);
+          const settlementsInfo = groupAssignmentsBySettlement(s.assignments, s.borrows);
           const totalEvents = (s.assignments || []).length;
           const canManage = isOwner || s.id === user?.staffId;
           return (
@@ -179,6 +180,11 @@ export default function StaffClient({
                             Due {inr(0)}
                           </Chip>
                         ) : null}
+                        {settlementsInfo.totalSettledAmount > 0 && (
+                          <Chip color="secondary" variant="flat" size="sm">
+                            Settled {inr(settlementsInfo.totalSettledAmount)}
+                          </Chip>
+                        )}
                       </div>
                     </div>
                   )}
@@ -204,6 +210,16 @@ export default function StaffClient({
                   >
                     View assignments
                   </Button>
+                  <Button
+                    as={Link}
+                    href={`/settlements/detail?id=${encodeURIComponent(s.id)}`}
+                    size="sm"
+                    variant="bordered"
+                    color={settlementsInfo.settlements.length > 0 ? "secondary" : "default"}
+                    radius="sm"
+                  >
+                    Settlements {settlementsInfo.settlements.length > 0 ? `(${settlementsInfo.settlements.length})` : ""}
+                  </Button>
                   {canManage && (
                     <Button size="sm" variant="bordered" radius="sm" onPress={() => openEditModal(s)}>
                       Edit
@@ -226,6 +242,7 @@ export default function StaffClient({
             if (!selected) return null;
             const pay = summarizeAssignments(selected.assignments || []);
             const bal = staffBalance(selected.assignments, selected.borrows);
+            const settlementsInfo = groupAssignmentsBySettlement(selected.assignments, selected.borrows);
             const totalEvents = (selected.assignments || []).length;
             const canManage = isOwner || selected.id === user?.staffId;
             return (
@@ -265,6 +282,14 @@ export default function StaffClient({
                           <span className="text-danger font-semibold">{inr(pay.due)}</span>
                         </p>
                       )}
+                      {settlementsInfo.totalSettledAmount > 0 && (
+                        <p className="text-sm text-foreground/70">
+                          <span className="text-foreground/50">Total settled: </span>
+                          <span className="text-secondary font-semibold">
+                            {inr(settlementsInfo.totalSettledAmount)} ({settlementsInfo.settlements.length} settlement{settlementsInfo.settlements.length === 1 ? "" : "s"})
+                          </span>
+                        </p>
+                      )}
                       <p className="text-sm text-foreground/70">
                         <span className="text-foreground/50">Borrowed: </span>
                         <span className="text-warning font-semibold">{inr(bal.borrowed)}</span>
@@ -299,6 +324,15 @@ export default function StaffClient({
                     className="font-semibold"
                   >
                     View assignments
+                  </Button>
+                  <Button
+                    as={Link}
+                    href={`/settlements/detail?id=${encodeURIComponent(selected.id)}`}
+                    variant="bordered"
+                    color="secondary"
+                    radius="sm"
+                  >
+                    View settlements
                   </Button>
                   <Button variant="light" onPress={onClose} radius="sm">
                     Close

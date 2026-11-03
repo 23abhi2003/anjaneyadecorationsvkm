@@ -115,6 +115,8 @@ export interface StaffPayment {
   createdAt?: string;
 }
 
+export type StaffBorrowStatus = "due" | "paid" | "settled";
+
 /**
  * Money a staff member borrowed from the owner. Unlike a `StaffPayment` (an advance
  * against ONE order), a borrow belongs to the staff member: it is deducted from the
@@ -129,11 +131,13 @@ export interface StaffBorrow {
   /** Why they borrowed it. */
   reason: string;
   /**
-   * Has this borrow been repaid (in cash, outside payroll)? "due" (default,
-   * missing = due) still counts against the staff member's remaining
-   * balance; "paid" is settled and excluded. Owner-only to edit.
+   * Has this borrow been repaid or settled?
+   * "due" (default, missing = due) still counts against the staff member's remaining balance;
+   * "paid" is repaid in cash; "settled" is settled in a settlement batch. Owner-only to manage.
    */
-  paymentStatus?: StaffPaymentStatus;
+  paymentStatus?: StaffBorrowStatus;
+  settlementNumber?: number;
+  settledAt?: string;
   createdAt?: string;
 }
 
@@ -145,6 +149,8 @@ export interface StaffAssignment {
   paymentStatus?: StaffPaymentStatus;
   /** Advances given. Managed by the server (record/delete via the Staff > assignments page). */
   payments?: StaffPayment[];
+  settlementNumber?: number;
+  settledAt?: string;
 }
 
 export interface InvoiceInfo {
@@ -206,6 +212,8 @@ export interface StaffAssignmentRecord {
   date?: string;
   paymentStatus?: StaffPaymentStatus;
   payments?: StaffPayment[];
+  settlementNumber?: number;
+  settledAt?: string;
 }
 
 /** What an investment (business spend) was made toward. */
@@ -239,6 +247,8 @@ export interface StaffMember {
   phone: string;
   /** 4-digit login PIN. Never returned by the API — write-only from the client. */
   pin?: string;
+  /** Last settlement batch number. Managed by the server. */
+  lastSettlement?: number;
   /** Borrow ledger. Managed by the server; missing on older staff records. Staff logins only receive their own. */
   borrows?: StaffBorrow[];
   assignments: StaffAssignmentRecord[];

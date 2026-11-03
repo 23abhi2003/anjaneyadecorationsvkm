@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   CardBody,
+  Checkbox,
   Chip,
   DateRangePicker,
   Input,
@@ -17,8 +18,9 @@ import {
   TableBody,
   TableRow,
   TableCell,
+  useDisclosure,
 } from "@heroui/react";
-import { Pencil, Check, X, ArrowLeft, Wallet, Search, LayoutGrid, List as ListIcon } from "lucide-react";
+import { Pencil, Check, X, ArrowLeft, Wallet, Search, LayoutGrid, List as ListIcon, Receipt } from "lucide-react";
 import type { DateValue } from "@react-types/datepicker";
 import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
@@ -27,13 +29,16 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import {
   assignmentMoney,
+  groupAssignmentsBySettlement,
   inr,
   matchesOrderQuery,
+  parseAmt,
   sortAssignmentsByDate,
   summarizeAssignments,
   type AssignmentSort,
 } from "@/lib/staffPay";
 import StaffPaymentsModal from "@/components/StaffPaymentsModal";
+import StaffSettlementModal from "@/components/StaffSettlementModal";
 import StaffBorrowsPanel from "@/components/StaffBorrowsPanel";
 import Pagination from "@/components/pagination";
 import { MIN_PAGE_SIZE, clampPage, paginate } from "@/lib/pagination";
@@ -87,6 +92,10 @@ export default function StaffAssignmentsClient({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(MIN_PAGE_SIZE);
 
+  // Settlement selection & modal state
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const { isOpen: settlementOpen, onOpen: openSettlement, onOpenChange: onSettlementOpenChange } = useDisclosure();
+
   // Owner-only inline editing. Keyed by orderId since that's what the edit
   // endpoint is keyed on. Only one row can be edited at a time.
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -110,11 +119,17 @@ export default function StaffAssignmentsClient({
     setPage(1);
   }, [orderQuery, range, paymentFilter, sortOrder, pageSize]);
 
+  // Active assignments that have not been settled yet (settled orders move to the settlements page)
+  const activeAssignments = useMemo(
+    () => (staff.assignments || []).filter((a) => !a.settlementNumber || Number(a.settlementNumber) <= 0),
+    [staff.assignments]
+  );
+
   // All hooks must run unconditionally before any early return below.
   const filtered = useMemo(
     () =>
       sortAssignmentsByDate(
-        (staff.assignments || []).filter((a) => {
+        activeAssignments.filter((a) => {
           if (!withinRange(a.date, range)) return false;
           if (!matchesOrderQuery(a, orderQuery)) return false;
           if (paymentFilter !== "all") {
@@ -125,17 +140,94 @@ export default function StaffAssignmentsClient({
         }),
         sortOrder
       ),
-    [staff.assignments, range, orderQuery, paymentFilter, sortOrder]
+    [activeAssignments, range, orderQuery, paymentFilter, sortOrder]
   );
   // Total always reflects everything active above: the order filter AND the date range.
   const totals = summarizeAssignments(filtered);
-  const totalOrders = (staff.assignments || []).length;
+  const totalOrders = activeAssignments.length;
   const filtersActive = !!range || orderQuery.trim() !== "" || paymentFilter !== "all";
 
   // Page is clamped against the current filtered length, so a filter change that shrinks
   // the list (or a fresh assignment being added) never strands the view on an empty page.
   const currentPage = clampPage(page, filtered.length, pageSize);
   const paged = useMemo(() => paginate(filtered, currentPage, pageSize), [filtered, currentPage, pageSize]);
+
+  // Settlement calculations
+  const { settlements, totalSettledAmount, totalSettledOrders } = useMemo(
+    () => groupAssignmentsBySettlement(staff.assignments, staff.borrows),
+    [staff.assignments, staff.borrows]
+  );
+
+  const selectedOrders = useMemo(
+    () => activeAssignments.filter((a) => selectedOrderIds.has(a.orderId)),
+    [activeAssignments, selectedOrderIds]
+  );
+
+  const selectedTotal = useMemo(
+    () => selectedOrders.reduce((sum, a) => sum + parseAmt(a.amount), 0),
+    [selectedOrders]
+  );
+
+  function toggleOrder(orderId: string): void {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  }
+
+  // Toggle selection for all currently filtered orders
+  const allFilteredSelected = filtered.length > 0 && filtered.every((a) => selectedOrderIds.has(a.orderId));
+  const someFilteredSelected = filtered.some((a) => selectedOrderIds.has(a.orderId));
+
+  function toggleSelectAll(): void {
+    if (allFilteredSelected) {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((a) => next.delete(a.orderId));
+        return next;
+      });
+    } else {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((a) => next.add(a.orderId));
+        return next;
+      });
+    }
+  }
+
+  const allPagedSelected = paged.length > 0 && paged.every((a) => selectedOrderIds.has(a.orderId));
+  const somePagedSelected = paged.some((a) => selectedOrderIds.has(a.orderId));
+
+  function toggleSelectAllPaged(): void {
+    if (allPagedSelected) {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev);
+        paged.forEach((a) => next.delete(a.orderId));
+        return next;
+      });
+    } else {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev);
+        paged.forEach((a) => next.add(a.orderId));
+        return next;
+      });
+    }
+  }
+
+  function selectAllActive(): void {
+    const next = new Set(selectedOrderIds);
+    activeAssignments.forEach((a) => next.add(a.orderId));
+    setSelectedOrderIds(next);
+  }
+
+  function clearSelection(): void {
+    setSelectedOrderIds(new Set());
+  }
 
   function clearFilters(): void {
     setRange(null);
@@ -212,36 +304,134 @@ export default function StaffAssignmentsClient({
       <Card className="bg-content1">
         <CardBody className="p-5 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-              Assignments
-            </h2>
-            <div className="flex items-center gap-1 bg-content2 rounded-md p-1">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                Active Assignments
+              </h2>
+              {isOwner && (
+                <Button
+                  size="sm"
+                  color={selectedOrderIds.size > 0 ? "primary" : "default"}
+                  variant={selectedOrderIds.size > 0 ? "solid" : "bordered"}
+                  radius="sm"
+                  onPress={openSettlement}
+                  className="font-semibold"
+                  startContent={<Receipt size={16} />}
+                >
+                  {selectedOrderIds.size > 0
+                    ? `Create Settlement (${selectedOrderIds.size}) · ${inr(selectedTotal)}`
+                    : `Create Settlement`}
+                </Button>
+              )}
               <Button
-                isIconOnly
+                as={Link}
+                href={`/settlements/detail?id=${encodeURIComponent(staff.id)}`}
                 size="sm"
+                variant="flat"
+                color="secondary"
                 radius="sm"
-                variant={viewMode === "list" ? "solid" : "light"}
-                color={viewMode === "list" ? "primary" : "default"}
-                onPress={() => setViewMode("list")}
-                aria-label="List view"
-                title="List view"
+                className="font-medium"
+                startContent={<Receipt size={16} />}
               >
-                <ListIcon size={16} />
-              </Button>
-              <Button
-                isIconOnly
-                size="sm"
-                radius="sm"
-                variant={viewMode === "grid" ? "solid" : "light"}
-                color={viewMode === "grid" ? "primary" : "default"}
-                onPress={() => setViewMode("grid")}
-                aria-label="Grid view"
-                title="Grid view"
-              >
-                <LayoutGrid size={16} />
+                View Settlements {settlements.length > 0 ? `(${settlements.length})` : ""}
               </Button>
             </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {isOwner && filtered.length > 0 && (
+                <Button
+                  size="sm"
+                  variant={allFilteredSelected ? "solid" : "bordered"}
+                  color={allFilteredSelected ? "primary" : "default"}
+                  radius="sm"
+                  onPress={toggleSelectAll}
+                  className="font-medium"
+                >
+                  {allFilteredSelected ? "Deselect All" : `Select All (${filtered.length})`}
+                </Button>
+              )}
+              <div className="flex items-center gap-1 bg-content2 rounded-md p-1">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  radius="sm"
+                  variant={viewMode === "list" ? "solid" : "light"}
+                  color={viewMode === "list" ? "primary" : "default"}
+                  onPress={() => setViewMode("list")}
+                  aria-label="List view"
+                  title="List view"
+                >
+                  <ListIcon size={16} />
+                </Button>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  radius="sm"
+                  variant={viewMode === "grid" ? "solid" : "light"}
+                  color={viewMode === "grid" ? "primary" : "default"}
+                  onPress={() => setViewMode("grid")}
+                  aria-label="Grid view"
+                  title="Grid view"
+                >
+                  <LayoutGrid size={16} />
+                </Button>
+              </div>
+            </div>
           </div>
+
+          {settlements.length > 0 && (
+            <div className="flex items-center justify-between gap-2 bg-secondary/10 border border-secondary/30 rounded-lg px-3.5 py-2 text-xs flex-wrap">
+              <span className="text-foreground/80">
+                <span className="font-semibold text-secondary">{settlements.length} settlement batch{settlements.length === 1 ? "" : "es"}</span> ({inr(totalSettledAmount)} settled). Settled orders are automatically moved to the settlements page.
+              </span>
+              <Button
+                as={Link}
+                href={`/settlements/detail?id=${encodeURIComponent(staff.id)}`}
+                size="sm"
+                variant="light"
+                color="secondary"
+                radius="sm"
+                className="h-6 text-xs px-2.5 font-medium"
+              >
+                View Settlements &rarr;
+              </Button>
+            </div>
+          )}
+
+          {selectedOrderIds.size > 0 && isOwner && (
+            <div className="flex items-center justify-between gap-3 bg-primary/10 border border-primary/40 rounded-lg px-4 py-2.5 text-sm flex-wrap">
+              <div className="flex items-center gap-2">
+                <Receipt size={18} className="text-primary" />
+                <span className="font-semibold text-foreground">
+                  {selectedOrderIds.size} order{selectedOrderIds.size === 1 ? "" : "s"} selected
+                </span>
+                <span className="text-foreground/40">&middot;</span>
+                <span className="font-bold text-primary font-mono">{inr(selectedTotal)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={allFilteredSelected ? "solid" : "bordered"}
+                  radius="sm"
+                  onPress={toggleSelectAll}
+                >
+                  {allFilteredSelected ? "Deselect All" : `Select All (${filtered.length})`}
+                </Button>
+                <Button size="sm" variant="light" radius="sm" onPress={clearSelection}>
+                  Clear selection
+                </Button>
+                <Button
+                  size="sm"
+                  color="primary"
+                  radius="sm"
+                  className="font-semibold"
+                  onPress={openSettlement}
+                  startContent={<Receipt size={15} />}
+                >
+                  Create Settlement
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-end gap-3 flex-wrap">
             <Input
@@ -310,6 +500,16 @@ export default function StaffAssignmentsClient({
             <div className="overflow-x-auto">
               <Table aria-label={`${staff.name} assignments`} removeWrapper className="min-w-160">
                 <TableHeader>
+                  <TableColumn width={46}>
+                    {isOwner ? (
+                      <Checkbox
+                        isSelected={allFilteredSelected && filtered.length > 0}
+                        isIndeterminate={someFilteredSelected && !allFilteredSelected}
+                        onValueChange={toggleSelectAll}
+                        aria-label="Select all filtered orders"
+                      />
+                    ) : null}
+                  </TableColumn>
                   <TableColumn>ORDER</TableColumn>
                   <TableColumn>CUSTOMER NAME</TableColumn>
                   <TableColumn>AMOUNT</TableColumn>
@@ -322,7 +522,16 @@ export default function StaffAssignmentsClient({
                     const isEditing = isOwner && editingOrderId === a.orderId;
                     const money = assignmentMoney(a);
                     return (
-                      <TableRow key={a.orderId}>
+                      <TableRow key={a.orderId} className={selectedOrderIds.has(a.orderId) ? "bg-primary/5" : undefined}>
+                        <TableCell>
+                          {isOwner ? (
+                            <Checkbox
+                              isSelected={selectedOrderIds.has(a.orderId)}
+                              onValueChange={() => toggleOrder(a.orderId)}
+                              aria-label={`Select order ${a.orderId}`}
+                            />
+                          ) : null}
+                        </TableCell>
                         <TableCell>
                           {isEditing ? (
                             <div className="flex flex-col gap-1">
@@ -336,10 +545,17 @@ export default function StaffAssignmentsClient({
                               />
                             </div>
                           ) : (
-                            <>
-                              <span className="text-foreground/40 mr-1">{a.orderId}</span>
-                              {a.program}
-                            </>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-foreground/40 mr-1">{a.orderId}</span>
+                                {a.settlementNumber && Number(a.settlementNumber) > 0 && (
+                                  <Chip size="sm" variant="flat" color="secondary" className="h-5 text-[10px] px-1.5 font-semibold">
+                                    #{a.settlementNumber}
+                                  </Chip>
+                                )}
+                              </div>
+                              <span>{a.program}</span>
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>
@@ -408,9 +624,16 @@ export default function StaffAssignmentsClient({
                               ))}
                             </div>
                           ) : (
-                            <Chip size="sm" variant="flat" color={money.status === "paid" ? "success" : "warning"}>
-                              {money.status === "paid" ? "Paid" : "Due"}
-                            </Chip>
+                            <div className="flex flex-col gap-1 items-start">
+                              <Chip size="sm" variant="flat" color={money.status === "paid" ? "success" : "warning"}>
+                                {money.status === "paid" ? "Paid" : "Due"}
+                              </Chip>
+                              {a.settlementNumber && Number(a.settlementNumber) > 0 && (
+                                <span className="text-[11px] text-secondary font-medium whitespace-nowrap">
+                                  Settlement #{a.settlementNumber}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>
@@ -482,7 +705,14 @@ export default function StaffAssignmentsClient({
                     const isEditing = isOwner && editingOrderId === a.orderId;
                     const money = assignmentMoney(a);
                     return (
-                      <Card key={a.orderId} className="bg-content1 border border-divider">
+                      <Card
+                        key={a.orderId}
+                        className={`bg-content1 border transition-colors ${
+                          selectedOrderIds.has(a.orderId)
+                            ? "border-primary ring-1 ring-primary/40"
+                            : "border-divider"
+                        }`}
+                      >
                         <CardBody className="p-4 space-y-2">
                           {isEditing ? (
                             <div className="space-y-2">
@@ -564,10 +794,28 @@ export default function StaffAssignmentsClient({
                           ) : (
                             <>
                               <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-xs text-foreground/40">{a.orderId}</p>
-                                  <p className="font-semibold truncate">{a.program}</p>
-                                  <p className="text-sm text-foreground/70 truncate">{a.customerName}</p>
+                                <div className="flex items-start gap-2.5 min-w-0">
+                                  {isOwner && (
+                                    <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                                      <Checkbox
+                                        isSelected={selectedOrderIds.has(a.orderId)}
+                                        onValueChange={() => toggleOrder(a.orderId)}
+                                        aria-label={`Select order ${a.orderId}`}
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <p className="text-xs text-foreground/40 font-mono">{a.orderId}</p>
+                                      {a.settlementNumber && Number(a.settlementNumber) > 0 && (
+                                        <Chip size="sm" variant="flat" color="secondary" className="h-5 text-[10px] px-1.5 font-semibold">
+                                          Settlement #{a.settlementNumber}
+                                        </Chip>
+                                      )}
+                                    </div>
+                                    <p className="font-semibold truncate">{a.program}</p>
+                                    <p className="text-sm text-foreground/70 truncate">{a.customerName}</p>
+                                  </div>
                                 </div>
                                 <Chip size="sm" variant="flat" color={money.status === "paid" ? "success" : "warning"}>
                                   {money.status === "paid" ? "Paid" : "Due"}
@@ -653,14 +901,19 @@ export default function StaffAssignmentsClient({
                 <Chip color="danger" variant="flat" className="font-semibold">
                   Due {inr(totals.due)}
                 </Chip>
+                {totalSettledAmount > 0 && (
+                  <Chip color="secondary" variant="flat" className="font-semibold">
+                    Settled {inr(totalSettledAmount)}
+                  </Chip>
+                )}
               </div>
             </div>
           )}
 
           {isOwner && (
             <p className="text-xs text-foreground/40">
-              Editing here updates the underlying order too, so the fix sticks. Paid means fully settled; use the
-              wallet button to record advances given before that — they are subtracted from the amount.
+              Editing here updates the underlying order too, so the fix sticks. Paid means fully settled; use checkboxes
+              to select orders and create settlement batches.
             </p>
           )}
         </CardBody>
@@ -687,6 +940,17 @@ export default function StaffAssignmentsClient({
         isOwner={isOwner}
         onClose={() => setPayOrderId(null)}
         onChanged={() => onChanged?.()}
+      />
+
+      <StaffSettlementModal
+        isOpen={settlementOpen}
+        onOpenChange={onSettlementOpenChange}
+        staff={staff}
+        selectedOrderIds={selectedOrderIds}
+        onClearSelection={clearSelection}
+        onSelectAllUnsettled={selectAllActive}
+        onSettlementCreated={() => onChanged?.()}
+        isOwner={isOwner}
       />
 
       <div className="mt-8 pt-4 border-t border-[#D9A427]/20 flex items-center justify-between no-print">

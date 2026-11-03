@@ -1,4 +1,4 @@
-import type { StaffBorrow, StaffPayment, StaffPaymentStatus } from "@/lib/types";
+import type { StaffAssignmentRecord, StaffBorrow, StaffPayment, StaffPaymentStatus } from "@/lib/types";
 
 /**
  * Staff payout maths, shared by the Staff cards, the assignments page and the
@@ -58,14 +58,22 @@ export function sumBorrows(borrows?: StaffBorrow[]): number {
   return (borrows ?? []).reduce((sum, b) => sum + parseAmt(b.amount), 0);
 }
 
-/** Borrows still "due" (missing status = due) — the only ones that count against the balance below. */
+/** Borrows still "due" (missing status = due) — the only ones that count against the active balance. */
 export function sumOutstandingBorrows(borrows?: StaffBorrow[]): number {
-  return (borrows ?? []).reduce((sum, b) => sum + (b.paymentStatus === "paid" ? 0 : parseAmt(b.amount)), 0);
+  return (borrows ?? []).reduce(
+    (sum, b) => sum + (b.paymentStatus === "paid" || b.paymentStatus === "settled" ? 0 : parseAmt(b.amount)),
+    0
+  );
 }
 
-/** Borrows the staff member has already repaid. */
+/** Borrows the staff member has already repaid outside payroll (paid). */
 export function sumRepaidBorrows(borrows?: StaffBorrow[]): number {
   return (borrows ?? []).reduce((sum, b) => sum + (b.paymentStatus === "paid" ? parseAmt(b.amount) : 0), 0);
+}
+
+/** Borrows that were cleared in a settlement batch (settled). */
+export function sumSettledBorrows(borrows?: StaffBorrow[]): number {
+  return (borrows ?? []).reduce((sum, b) => sum + (b.paymentStatus === "settled" ? parseAmt(b.amount) : 0), 0);
 }
 
 export type AssignmentSort = "newest" | "oldest";
@@ -112,12 +120,14 @@ export function matchesOrderQuery<T extends { orderId: string; program?: string;
 export interface StaffBalance {
   /** Sum of the amounts of ALL orders assigned to the staff member. */
   total: number;
-  /** Borrows still outstanding (not yet repaid) — this is what reduces `remaining`. */
+  /** Borrows still outstanding (due) — this is what reduces `remaining`. */
   borrowed: number;
   /** Every borrow ever recorded, repaid or not — for display only. */
   borrowedTotal: number;
-  /** Borrows the staff member has already repaid (outside payroll). */
+  /** Borrows the staff member has already repaid in cash (outside payroll). */
   repaid: number;
+  /** Borrows cleared in a settlement batch. */
+  settled: number;
   /** total - borrowed (outstanding only). Negative when they've borrowed more than earned so far. */
   remaining: number;
 }
@@ -125,8 +135,7 @@ export interface StaffBalance {
 /**
  * Borrows are deducted from the total of ALL the staff member's assigned orders
  * (never a date-filtered subset), so pass their full `assignments` list here.
- * Only borrows still marked "due" count against `remaining` — one the owner
- * has marked "paid" (repaid) is settled and excluded.
+ * Only borrows still marked "due" count against `remaining`.
  */
 export function staffBalance(
   assignments: Array<{ amount?: string; paymentStatus?: StaffPaymentStatus; payments?: StaffPayment[] }> | undefined,
@@ -136,7 +145,8 @@ export function staffBalance(
   const borrowed = sumOutstandingBorrows(borrows);
   const borrowedTotal = sumBorrows(borrows);
   const repaid = sumRepaidBorrows(borrows);
-  return { total, borrowed, borrowedTotal, repaid, remaining: Math.round((total - borrowed) * 100) / 100 };
+  const settled = sumSettledBorrows(borrows);
+  return { total, borrowed, borrowedTotal, repaid, settled, remaining: Math.round((total - borrowed) * 100) / 100 };
 }
 
 /** ₹12,500 style (Indian digit grouping). Negatives read as -₹500. */
@@ -148,4 +158,120 @@ export function inr(n: number): string {
 /** Today's date as YYYY-MM-DD in the user's own time zone (not UTC). */
 export function todayLocalISO(): string {
   return new Date().toLocaleDateString("en-CA");
+}
+
+export interface StaffSettlementSummary {
+  settlementNumber: number;
+  assignments: StaffAssignmentRecord[];
+  borrows: StaffBorrow[];
+  total: number;
+  borrowsTotal: number;
+  netTotal: number;
+  settledAt?: string;
+  orderCount: number;
+  borrowCount: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export function groupAssignmentsBySettlement(
+  assignments?: StaffAssignmentRecord[],
+  borrows?: StaffBorrow[]
+): {
+  settlements: StaffSettlementSummary[];
+  totalSettledAmount: number;
+  totalSettledOrders: number;
+  totalSettledBorrows: number;
+} {
+  const orderMap = new Map<number, StaffAssignmentRecord[]>();
+  for (const a of assignments ?? []) {
+    if (a.settlementNumber != null && Number(a.settlementNumber) > 0) {
+      const num = Number(a.settlementNumber);
+      const list = orderMap.get(num) ?? [];
+      list.push(a);
+      orderMap.set(num, list);
+    }
+  }
+
+  const borrowMap = new Map<number, StaffBorrow[]>();
+  for (const b of borrows ?? []) {
+    if (b.settlementNumber != null && Number(b.settlementNumber) > 0) {
+      const num = Number(b.settlementNumber);
+      const list = borrowMap.get(num) ?? [];
+      list.push(b);
+      borrowMap.set(num, list);
+    }
+  }
+
+  // All unique settlement numbers
+  const allNums = new Set<number>([...orderMap.keys(), ...borrowMap.keys()]);
+  const settlements: StaffSettlementSummary[] = [];
+  let totalSettledAmount = 0;
+  let totalSettledOrders = 0;
+  let totalSettledBorrows = 0;
+
+  for (const num of allNums) {
+    const oList = orderMap.get(num) ?? [];
+    const bList = borrowMap.get(num) ?? [];
+
+    const total = oList.reduce((sum, a) => sum + parseAmt(a.amount), 0);
+    const borrowsTotal = bList.reduce((sum, b) => sum + parseAmt(b.amount), 0);
+    const netTotal = total - borrowsTotal;
+
+    const settledAt =
+      oList.find((a) => a.settledAt)?.settledAt ||
+      bList.find((b) => b.settledAt)?.settledAt ||
+      oList[0]?.date ||
+      bList[0]?.date;
+
+    const validDates = [
+      ...oList.map((a) => a.date),
+      ...bList.map((b) => b.date),
+    ]
+      .filter((d): d is string => !!d && d.trim() !== "")
+      .sort();
+
+    const startDate = validDates.length > 0 ? validDates[0] : settledAt;
+    const endDate = validDates.length > 0 ? validDates[validDates.length - 1] : settledAt;
+
+    settlements.push({
+      settlementNumber: num,
+      assignments: oList,
+      borrows: bList,
+      total,
+      borrowsTotal,
+      netTotal,
+      settledAt,
+      orderCount: oList.length,
+      borrowCount: bList.length,
+      startDate,
+      endDate,
+    });
+
+    totalSettledAmount += total;
+    totalSettledOrders += oList.length;
+    totalSettledBorrows += bList.length;
+  }
+
+  // Sort descending by settlement number (latest first)
+  settlements.sort((a, b) => b.settlementNumber - a.settlementNumber);
+
+  return { settlements, totalSettledAmount, totalSettledOrders, totalSettledBorrows };
+}
+
+export function nextSettlementNumber(staff: {
+  lastSettlement?: number;
+  assignments?: StaffAssignmentRecord[];
+  borrows?: StaffBorrow[];
+}): number {
+  const maxAssigned = (staff.assignments || []).reduce(
+    (max, a) => Math.max(max, Number(a.settlementNumber) || 0),
+    0
+  );
+  const maxBorrowed = (staff.borrows || []).reduce(
+    (max, b) => Math.max(max, Number(b.settlementNumber) || 0),
+    0
+  );
+  const maxKnown = Math.max(staff.lastSettlement || 0, maxAssigned, maxBorrowed);
+  return maxKnown === 0 ? 1 : maxKnown + 1;
 }

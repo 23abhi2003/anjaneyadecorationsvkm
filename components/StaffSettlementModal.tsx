@@ -13,7 +13,6 @@ import {
   Chip,
   Card,
   CardBody,
-  Checkbox,
 } from "@heroui/react";
 import {
   Receipt,
@@ -163,7 +162,7 @@ export default function StaffSettlementModal({
         throw new Error((data as { error?: string }).error || "Failed to create settlement.");
       }
 
-      setCreateSuccess(`Settlement #${targetNum} created successfully!`);
+      setCreateSuccess(`Settlement #${targetNum} created successfully! Items have been cleared.`);
       onClearSelection();
       setSelectedBorrowIds(new Set());
       onSettlementCreated?.();
@@ -178,6 +177,7 @@ export default function StaffSettlementModal({
     if (!isOwner) return;
     setDeleting(true);
     setDeleteError("");
+
     try {
       const res = await apiFetch(
         `/api/staff/${encodeURIComponent(staff.id)}/settlements/${encodeURIComponent(settlementNum)}`,
@@ -210,15 +210,15 @@ export default function StaffSettlementModal({
       onOpenChange={onOpenChange}
       size="2xl"
       scrollBehavior="inside"
-      className="max-h-[90vh]"
+      className="max-h-[92vh]"
     >
       <ModalContent>
         {(onClose) => (
           <>
             <ModalHeader className="flex items-center gap-2 border-b border-divider pb-3">
-              <Receipt size={22} className="text-primary" />
+              <Receipt size={22} className="text-primary shrink-0" />
               <div>
-                <h2 className="text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                <h2 className="text-lg sm:text-xl font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>
                   Settlements — {staff.name}
                 </h2>
                 <p className="text-xs text-foreground/50 font-normal">
@@ -227,18 +227,18 @@ export default function StaffSettlementModal({
               </div>
             </ModalHeader>
 
-            <ModalBody className="space-y-6 py-4">
+            <ModalBody className="space-y-5 py-4">
               {/* SECTION 1: CREATE NEW SETTLEMENT (OWNER ONLY) */}
               {isOwner && (
-                <div className="space-y-3 bg-content2/60 rounded-xl p-4 border border-divider">
+                <div className="space-y-3 bg-content2/50 rounded-xl p-3.5 sm:p-4 border border-divider">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <h3 className="text-base font-semibold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
+                    <h3 className="text-sm sm:text-base font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>
                       Create New Settlement
                     </h3>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {selectedOrderIds.size > 0 && (
                         <Chip color="primary" variant="flat" size="sm">
-                          {selectedOrderIds.size} order{selectedOrderIds.size === 1 ? "" : "s"} &middot; {inr(selectedOrdersTotal)}
+                          {selectedOrderIds.size} {selectedOrderIds.size === 1 ? "order" : "orders"} &middot; {inr(selectedOrdersTotal)}
                         </Chip>
                       )}
                       {selectedBorrowIds.size > 0 && (
@@ -250,9 +250,9 @@ export default function StaffSettlementModal({
                   </div>
 
                   {selectedOrderIds.size === 0 && dueBorrows.length === 0 ? (
-                    <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm space-y-2">
-                      <div className="flex items-center gap-2 text-warning font-medium">
-                        <AlertCircle size={16} />
+                    <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 text-xs sm:text-sm space-y-2">
+                      <div className="flex items-center gap-2 text-warning font-semibold">
+                        <AlertCircle size={16} className="shrink-0" />
                         <span>No orders currently selected</span>
                       </div>
                       <p className="text-xs text-foreground/70">
@@ -265,7 +265,7 @@ export default function StaffSettlementModal({
                           variant="flat"
                           radius="sm"
                           onPress={onSelectAllUnsettled}
-                          className="font-medium"
+                          className="font-semibold"
                         >
                           Select All Unsettled Orders ({unsettledAssignments.length})
                         </Button>
@@ -275,13 +275,13 @@ export default function StaffSettlementModal({
                     <div className="space-y-3">
                       {/* Selected orders preview chips */}
                       {selectedAssignments.length > 0 && (
-                        <div className="max-h-28 overflow-y-auto p-2 bg-content1 rounded-lg border border-divider space-y-1">
-                          <div className="flex items-center justify-between text-xs text-foreground/60 mb-1 px-1">
+                        <div className="max-h-28 overflow-y-auto p-2.5 bg-content1 rounded-lg border border-divider space-y-1.5">
+                          <div className="flex items-center justify-between text-xs text-foreground/60 px-1">
                             <span>Selected Orders ({selectedAssignments.length})</span>
                             <button
                               type="button"
                               onClick={onClearSelection}
-                              className="text-primary hover:underline text-xs"
+                              className="text-primary hover:underline text-xs font-medium"
                             >
                               Deselect all
                             </button>
@@ -295,7 +295,7 @@ export default function StaffSettlementModal({
                                 color="primary"
                                 className="text-xs"
                               >
-                                <span className="font-semibold">{a.orderId}</span>: {a.program || a.customerName || "Order"} ({inr(parseAmt(a.amount))})
+                                <span className="font-semibold font-mono">{a.orderId}</span>: {a.program || a.customerName || "Order"} ({inr(parseAmt(a.amount))})
                               </Chip>
                             ))}
                           </div>
@@ -311,26 +311,26 @@ export default function StaffSettlementModal({
                               Deduct Due Borrows in this Settlement (Optional)
                             </span>
                             <span className="text-[11px] text-foreground/50">
-                              {dueBorrows.length} due borrow{dueBorrows.length === 1 ? "" : "s"}
+                              {dueBorrows.length} due
                             </span>
                           </div>
                           <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
                             {dueBorrows.map((b) => (
                               <label
                                 key={b.id}
-                                className="flex items-center justify-between p-1.5 rounded bg-content2/40 hover:bg-content2/70 cursor-pointer text-xs"
+                                className="flex items-center justify-between p-2 rounded bg-content2/40 hover:bg-content2/70 cursor-pointer text-xs border border-divider/50"
                               >
                                 <div className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={selectedBorrowIds.has(b.id)}
                                     onChange={() => toggleBorrow(b.id)}
-                                    className="rounded border-foreground/30 accent-[#D9A427]"
+                                    className="rounded border-foreground/30 accent-primary w-4 h-4"
                                   />
-                                  <span>{b.reason || "Borrow"}</span>
-                                  <span className="text-foreground/40 font-mono text-[11px]">{b.date}</span>
+                                  <span className="text-foreground font-medium">{b.reason || "Borrow"}</span>
+                                  <span className="text-foreground/50 font-mono text-[11px]">{b.date}</span>
                                 </div>
-                                <span className="font-mono font-semibold text-warning">
+                                <span className="font-mono font-bold text-warning">
                                   {inr(parseAmt(b.amount))}
                                 </span>
                               </label>
@@ -340,20 +340,20 @@ export default function StaffSettlementModal({
                       )}
 
                       {/* Summary Net Calculation */}
-                      <div className="flex items-center justify-between p-2.5 bg-content3/40 rounded-lg text-xs font-mono">
-                        <span>
-                          Orders: <strong className="text-primary">{inr(selectedOrdersTotal)}</strong>
+                      <div className="flex items-center justify-between p-2.5 bg-content1 rounded-lg text-xs font-mono border border-divider">
+                        <span className="text-foreground/80">
+                          Orders: <strong className="text-success">{inr(selectedOrdersTotal)}</strong>
                           {selectedBorrowsTotal > 0 && (
                             <> - Borrows: <strong className="text-warning">{inr(selectedBorrowsTotal)}</strong></>
                           )}
                         </span>
-                        <span className="text-sm">
-                          Net Payout: <strong className="text-success text-base">{inr(netPayout)}</strong>
+                        <span>
+                          Net: <strong className="text-primary text-sm font-bold">{inr(netPayout)}</strong>
                         </span>
                       </div>
 
                       {/* Settlement Number Input & Confirm */}
-                      <div className="flex items-end gap-3 flex-wrap">
+                      <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                         <Input
                           label="Settlement Number"
                           description={`Next recommended: #${suggestedNumber}`}
@@ -362,8 +362,8 @@ export default function StaffSettlementModal({
                           min={1}
                           value={settlementNumberInput}
                           onValueChange={setSettlementNumberInput}
-                          className="max-w-xs"
                           isRequired
+                          className="w-full sm:max-w-xs"
                         />
 
                         <Button
@@ -371,7 +371,7 @@ export default function StaffSettlementModal({
                           radius="sm"
                           onPress={handleCreateSettlement}
                           isLoading={creating}
-                          className="font-semibold shrink-0"
+                          className="w-full sm:w-auto font-bold shrink-0 h-10"
                           startContent={!creating && <Receipt size={16} />}
                         >
                           Confirm &amp; Create Settlement #{settlementNumberInput || "?"}
@@ -379,28 +379,23 @@ export default function StaffSettlementModal({
                       </div>
 
                       {createError && (
-                        <p className="text-sm text-danger flex items-center gap-1.5">
-                          <AlertCircle size={15} />
+                        <p className="text-xs sm:text-sm text-danger flex items-center gap-1.5 bg-danger/10 p-2.5 rounded-lg border border-danger/30">
+                          <AlertCircle size={15} className="shrink-0" />
                           {createError}
                         </p>
                       )}
                       {createSuccess && (
-                        <div className="flex items-center justify-between gap-2 p-2.5 bg-success/15 border border-success/30 rounded-lg text-sm text-success flex-wrap">
+                        <div className="flex items-center justify-between gap-2 p-2.5 bg-success/10 border border-success/30 rounded-lg text-xs sm:text-sm text-success flex-wrap">
                           <span className="flex items-center gap-1.5 font-medium">
-                            <CheckCircle2 size={16} />
+                            <CheckCircle2 size={16} className="shrink-0" />
                             {createSuccess}
                           </span>
-                          <Button
-                            as={Link}
+                          <Link
                             href={`/settlements/detail?id=${encodeURIComponent(staff.id)}`}
-                            size="sm"
-                            color="success"
-                            variant="flat"
-                            radius="sm"
-                            className="h-7 text-xs font-semibold"
+                            className="text-xs font-bold text-primary hover:underline"
                           >
                             Open Settlements Page &rarr;
-                          </Button>
+                          </Link>
                         </div>
                       )}
                     </div>
@@ -409,10 +404,10 @@ export default function StaffSettlementModal({
               )}
 
               {/* SECTION 2: PREVIOUS SETTLEMENTS */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
-                    <h3 className="text-lg font-semibold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
+                    <h3 className="text-base sm:text-lg font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>
                       Previous Settlements
                     </h3>
                     <p className="text-xs text-foreground/50">
@@ -421,151 +416,138 @@ export default function StaffSettlementModal({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Chip color="success" variant="flat" className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-                      Total Settled: {inr(totalSettledAmount)}
+                    <Chip color="success" variant="flat" size="sm" className="font-semibold font-mono">
+                      Total: {inr(totalSettledAmount)}
                     </Chip>
-                    <Chip color="default" variant="bordered" size="sm">
-                      {totalSettledOrders} order{totalSettledOrders === 1 ? "" : "s"} &middot; {settlements.length} batch{settlements.length === 1 ? "" : "es"}
+                    <Chip color="default" variant="bordered" size="sm" className="font-mono">
+                      {settlements.length} {settlements.length === 1 ? "batch" : "batches"}
                     </Chip>
                   </div>
                 </div>
 
                 {deleteError && (
-                  <p className="text-sm text-danger flex items-center gap-1.5 bg-danger/10 p-2.5 rounded-lg border border-danger/30">
-                    <AlertCircle size={15} />
+                  <p className="text-xs sm:text-sm text-danger flex items-center gap-1.5 bg-danger/10 p-2.5 rounded-lg border border-danger/30">
+                    <AlertCircle size={15} className="shrink-0" />
                     {deleteError}
                   </p>
                 )}
 
                 {settlements.length === 0 ? (
-                  <div className="text-center py-8 bg-content1 rounded-xl border border-divider space-y-1">
-                    <p className="text-sm text-foreground/60">No settlements created yet for {staff.name}.</p>
+                  <div className="text-center py-6 bg-content2/30 rounded-xl border border-divider space-y-1">
+                    <p className="text-xs sm:text-sm text-foreground/60">No settlements created yet for {staff.name}.</p>
                     <p className="text-xs text-foreground/40">
                       Select assigned orders above and create a settlement to record payouts.
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     {settlements.map((s: StaffSettlementSummary) => {
                       const isExpanded = expandedSettlement === s.settlementNumber;
                       const isConfirmingDelete = deletingNum === s.settlementNumber;
 
                       return (
-                        <Card key={s.settlementNumber} className="bg-content1 border border-divider">
-                          <CardBody className="p-3.5 space-y-2.5">
+                        <Card key={s.settlementNumber} className="bg-content1 border border-divider shadow-xs">
+                          <CardBody className="p-3 space-y-2">
                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="flex items-center gap-2.5">
-                                <span className="font-bold text-base text-primary" style={{ fontFamily: "var(--font-mono)" }}>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-sm text-primary font-mono px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
                                   #{s.settlementNumber}
                                 </span>
                                 <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-sm">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-semibold text-xs sm:text-sm text-foreground">
                                       Settlement #{s.settlementNumber}
                                     </span>
-                                    <Chip size="sm" variant="flat" color="success" className="font-semibold">
+                                    <Chip size="sm" variant="flat" color="success" className="font-semibold h-5 text-[11px]">
                                       {inr(s.total)}
                                     </Chip>
                                     {s.borrowsTotal > 0 && (
-                                      <Chip size="sm" variant="flat" color="warning" className="font-semibold text-xs">
+                                      <Chip size="sm" variant="flat" color="warning" className="font-semibold h-5 text-[11px]">
                                         -{inr(s.borrowsTotal)} borrow
                                       </Chip>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2 text-xs text-foreground/50 mt-0.5 flex-wrap">
-                                    {(s.startDate || s.endDate) && (
-                                      <span className="flex items-center gap-1 text-primary">
-                                        <Calendar size={12} />
-                                        {s.startDate === s.endDate ? s.startDate : `${s.startDate || "—"} → ${s.endDate || "—"}`}
-                                      </span>
-                                    )}
+                                  <div className="flex items-center gap-1 text-[11px] text-foreground/50 mt-0.5 font-mono">
+                                    <Calendar size={11} className="text-primary" />
+                                    <span>{s.startDate === s.endDate ? s.startDate : `${s.startDate || "—"} → ${s.endDate || "—"}`}</span>
                                     <span>&middot;</span>
-                                    <span>{s.orderCount} order{s.orderCount === 1 ? "" : "s"}</span>
-                                    {s.borrowCount > 0 && (
-                                      <>
-                                        <span>&middot;</span>
-                                        <span className="text-warning">{s.borrowCount} borrow{s.borrowCount === 1 ? "" : "s"}</span>
-                                      </>
-                                    )}
+                                    <span>{s.orderCount} orders</span>
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2">
-                                {/* DELETE SETTLEMENT OPTION (OWNER ONLY) */}
+                              <div className="flex items-center gap-1.5">
                                 {isOwner && (
-                                  <>
-                                    {isConfirmingDelete ? (
-                                      <div className="flex items-center gap-1.5 bg-danger/10 px-2.5 py-1 rounded border border-danger/30 text-xs">
-                                        <span className="text-danger font-medium">Delete batch #{s.settlementNumber}?</span>
-                                        <Button
-                                          size="sm"
-                                          color="danger"
-                                          radius="sm"
-                                          isLoading={deleting}
-                                          onPress={() => handleDeleteSettlement(s.settlementNumber)}
-                                          className="h-6 text-xs px-2.5 min-w-0 font-semibold"
-                                        >
-                                          Delete
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="light"
-                                          radius="sm"
-                                          isDisabled={deleting}
-                                          onPress={() => setDeletingNum(null)}
-                                          className="h-6 text-xs px-2 min-w-0"
-                                        >
-                                          Cancel
-                                        </Button>
-                                      </div>
-                                    ) : (
+                                  isConfirmingDelete ? (
+                                    <div className="flex items-center gap-1 bg-danger/10 px-2 py-0.5 rounded border border-danger/30 text-[11px]">
+                                      <span className="text-danger font-medium">Delete?</span>
+                                      <Button
+                                        size="sm"
+                                        color="danger"
+                                        radius="sm"
+                                        isLoading={deleting}
+                                        onPress={() => handleDeleteSettlement(s.settlementNumber)}
+                                        className="h-5 text-[11px] px-2 min-w-0 font-bold"
+                                      >
+                                        Yes
+                                      </Button>
                                       <Button
                                         size="sm"
                                         variant="light"
-                                        color="danger"
                                         radius="sm"
-                                        onPress={() => setDeletingNum(s.settlementNumber)}
-                                        className="h-7 text-xs px-2 font-medium"
-                                        startContent={<Trash2 size={13} />}
-                                        title="Delete this settlement batch and move items back to active"
+                                        isDisabled={deleting}
+                                        onPress={() => setDeletingNum(null)}
+                                        className="h-5 text-[11px] px-1 min-w-0 text-foreground/60"
                                       >
-                                        Delete
+                                        No
                                       </Button>
-                                    )}
-                                  </>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="light"
+                                      color="danger"
+                                      radius="sm"
+                                      onPress={() => setDeletingNum(s.settlementNumber)}
+                                      className="h-6 text-xs px-2"
+                                      startContent={<Trash2 size={12} />}
+                                      title="Delete this settlement batch"
+                                    >
+                                      Delete
+                                    </Button>
+                                  )
                                 )}
 
                                 <Button
                                   size="sm"
-                                  variant="flat"
+                                  variant="bordered"
                                   radius="sm"
                                   onPress={() => toggleExpand(s.settlementNumber)}
-                                  className="h-7 text-xs px-2 font-medium"
-                                  endContent={isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  className="h-6 text-xs px-2"
+                                  endContent={isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 >
-                                  {isExpanded ? "Hide orders" : `View ${s.orderCount} orders`}
+                                  {isExpanded ? "Hide" : `View (${s.orderCount})`}
                                 </Button>
                               </div>
                             </div>
 
                             {/* Collapsible orders & borrows list */}
                             {isExpanded && (
-                              <div className="mt-2 pt-2 border-t border-divider/60 space-y-2">
-                                <div className="text-xs text-foreground/50 font-medium px-1">
-                                  Items included in Settlement #{s.settlementNumber}:
+                              <div className="mt-2 pt-2 border-t border-divider/60 space-y-1.5">
+                                <div className="text-[11px] text-foreground/50 font-semibold px-1">
+                                  Items in Settlement #{s.settlementNumber}:
                                 </div>
                                 <div className="grid gap-1.5 sm:grid-cols-2">
                                   {s.assignments.map((a: StaffAssignmentRecord) => (
                                     <div
                                       key={a.orderId}
-                                      className="flex items-center justify-between p-2 bg-content2/50 rounded border border-divider/40 text-xs"
+                                      className="flex items-center justify-between p-2 bg-content2/40 rounded-lg border border-divider/40 text-xs"
                                     >
                                       <div className="min-w-0 flex-1 mr-2">
                                         <div className="flex items-center gap-1.5">
                                           <Link
                                             href={`/orders/${encodeURIComponent(a.orderId)}`}
-                                            className="font-semibold text-primary hover:underline"
+                                            className="font-bold text-primary font-mono hover:underline"
                                           >
                                             {a.orderId}
                                           </Link>
@@ -577,7 +559,7 @@ export default function StaffSettlementModal({
                                           {a.customerName || a.program || "Order"}
                                         </p>
                                       </div>
-                                      <span className="font-mono font-semibold text-success shrink-0">
+                                      <span className="font-mono font-bold text-success shrink-0">
                                         {inr(parseAmt(a.amount))}
                                       </span>
                                     </div>
@@ -586,7 +568,7 @@ export default function StaffSettlementModal({
                                   {s.borrows.map((b: StaffBorrow) => (
                                     <div
                                       key={b.id}
-                                      className="flex items-center justify-between p-2 bg-warning/5 rounded border border-warning/30 text-xs"
+                                      className="flex items-center justify-between p-2 bg-warning/5 rounded-lg border border-warning/20 text-xs"
                                     >
                                       <div className="min-w-0 flex-1 mr-2">
                                         <span className="font-semibold text-warning">
@@ -596,7 +578,7 @@ export default function StaffSettlementModal({
                                           {b.date || "—"}
                                         </span>
                                       </div>
-                                      <span className="font-mono font-semibold text-warning shrink-0">
+                                      <span className="font-mono font-bold text-warning shrink-0">
                                         -{inr(parseAmt(b.amount))}
                                       </span>
                                     </div>
@@ -613,8 +595,13 @@ export default function StaffSettlementModal({
               </div>
             </ModalBody>
 
-            <ModalFooter className="border-t border-divider">
-              <Button variant="light" radius="sm" onPress={onClose}>
+            <ModalFooter className="border-t border-divider py-2">
+              <Button
+                variant="light"
+                radius="sm"
+                onPress={onClose}
+                className="text-xs sm:text-sm font-medium"
+              >
                 Close
               </Button>
             </ModalFooter>

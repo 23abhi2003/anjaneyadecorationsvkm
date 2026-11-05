@@ -415,16 +415,31 @@ export default function HomePage() {
                 <Link
                   key={o.id}
                   href={`/orders/detail?id=${encodeURIComponent(o.id)}`}
-                  className="flex items-center justify-between px-4 py-2.5 rounded-md bg-content2 hover:brightness-95 transition-all gap-3"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 sm:py-2.5 rounded-lg bg-content2 hover:brightness-95 transition-all gap-1.5 sm:gap-3"
                 >
-                  <span className="text-sm text-foreground truncate flex-1">
-                    <span className="text-foreground/40 mr-1">{o.id}</span>
-                    <strong>{o.customer?.name}</strong>{" "}
-                    <span className="text-foreground/50">— {programLabel(o)}</span>
-                  </span>
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
-                      {o.eventDate}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-foreground/50 shrink-0 font-medium">
+                        {o.id}
+                      </span>
+                      <strong className="text-sm sm:text-base text-foreground font-bold truncate">
+                        {o.customer?.name || "—"}
+                      </strong>
+                    </div>
+                    <div className="text-xs text-foreground/60 flex items-center gap-1.5 mt-0.5 truncate">
+                      <span>{programLabel(o) || o.serviceType}</span>
+                      {o.status && (
+                        <>
+                          <span>&middot;</span>
+                          <span className="capitalize">{o.status}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-divider/30">
+                    <span className="text-xs text-secondary font-mono">
+                      {o.eventDate || "No date"}
                     </span>
                     {cleanPhone && (
                       <div
@@ -498,41 +513,59 @@ export default function HomePage() {
               <Link
                 key={o.id}
                 href={`/orders/detail?id=${encodeURIComponent(o.id)}`}
-                className="flex items-center justify-between px-4 py-2.5 rounded-md bg-content2 hover:brightness-95 transition-all gap-3"
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 sm:py-2.5 rounded-lg bg-content2 hover:brightness-95 transition-all gap-1.5 sm:gap-3"
               >
-                <span className="text-sm text-foreground truncate flex-1">
-                  <span className="text-foreground/40 mr-1">{o.id}</span>
-                  {o.customer?.name}
-                </span>
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-foreground/50 shrink-0 font-medium">
+                      {o.id}
+                    </span>
+                    <strong className="text-sm sm:text-base text-foreground font-bold truncate">
+                      {o.customer?.name || "—"}
+                    </strong>
+                  </div>
+                  <div className="text-xs text-foreground/60 flex items-center gap-1.5 mt-0.5 truncate">
+                    <span>{programLabel(o) || o.serviceType}</span>
+                    {o.status && (
+                      <>
+                        <span>&middot;</span>
+                        <span className="capitalize">{o.status}</span>
+                      </>
+                    )}
+                    {o.eventDate && (
+                      <>
+                        <span>&middot;</span>
+                        <span className="text-secondary font-mono text-[11px]">{o.eventDate}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-divider/30">
                   {filter === "amount" ? (
-                    <span className="text-xs text-secondary" style={{ fontFamily: "var(--font-mono)" }}>
+                    <span className="text-xs text-secondary font-mono">
                       ₹{orderTotal(o).toLocaleString("en-IN")} total
                     </span>
                   ) : filter === "dues" ? (
-                    <span className="text-xs text-warning" style={{ fontFamily: "var(--font-mono)" }}>
+                    <span className="text-xs text-warning font-mono">
                       ₹{orderDue(o).toLocaleString("en-IN")} due
                     </span>
                   ) : filter === "staff" ? (
-                    <span className="text-xs" style={{ fontFamily: "var(--font-mono)", color: "#8B4A15" }}>
+                    <span className="text-xs font-mono" style={{ color: "#8B4A15" }}>
                       ₹{orderStaffAmount(o).toLocaleString("en-IN")} staff
                     </span>
                   ) : filter === "invested" ? (
-                    <span className="text-xs text-primary" style={{ fontFamily: "var(--font-mono)" }}>
+                    <span className="text-xs text-primary font-mono">
                       ₹{orderInvestment(o).toLocaleString("en-IN")} invested
                     </span>
                   ) : filter === "profit" ? (
                     <span
-                      className={`text-xs ${orderProfit(o) < 0 ? "text-danger" : "text-success"}`}
-                      style={{ fontFamily: "var(--font-mono)" }}
+                      className={`text-xs font-mono ${orderProfit(o) < 0 ? "text-danger" : "text-success"}`}
                     >
                       ₹{orderProfit(o).toLocaleString("en-IN")} profit
                     </span>
-                  ) : (
-                    <span className="text-xs text-foreground/50" style={{ fontFamily: "var(--font-mono)" }}>
-                      {o.serviceType} &middot; {o.status}
-                    </span>
-                  )}
+                  ) : null}
+
                   {cleanPhone && (
                     <div
                       className="flex items-center gap-1.5 shrink-0"

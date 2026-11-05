@@ -636,9 +636,23 @@ export default function OrderWizard({
       <CardBody className="p-6 md:p-10">
         <Progress value={progressPct} color="primary" size="sm" className="mb-8" aria-label="Wizard progress" />
 
-        <p className="text-xs uppercase tracking-wide text-foreground/40 mb-1" style={{ fontFamily: "var(--font-mono)" }}>
-          Step {stepIdx + 1} of {steps.length}
-        </p>
+        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+          <p className="text-xs uppercase tracking-wide text-foreground/40" style={{ fontFamily: "var(--font-mono)" }}>
+            Step {stepIdx + 1} of {steps.length}
+          </p>
+          {isEdit && step !== "review" && (
+            <Button
+              size="sm"
+              color="primary"
+              variant="flat"
+              radius="sm"
+              className="font-semibold"
+              onPress={() => setStepIdx(steps.length - 1)}
+            >
+              Done Editing (Back to Review) &rarr;
+            </Button>
+          )}
+        </div>
         <h2 className="text-2xl font-semibold text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
           {step === "customer" && isEdit ? "Edit order" : STEP_TITLES[step]}
         </h2>
@@ -1070,10 +1084,23 @@ export default function OrderWizard({
 
         <Divider className="my-8" />
 
-        <div className="flex items-center justify-between no-print">
+        <div className="flex items-center justify-between no-print gap-2 flex-wrap">
           <Button variant="bordered" onPress={back} isDisabled={stepIdx === 0} radius="sm">
             Back
           </Button>
+
+          {isEdit && step !== "review" && (
+            <Button
+              color="primary"
+              variant="flat"
+              radius="sm"
+              className="font-semibold"
+              onPress={() => setStepIdx(steps.length - 1)}
+            >
+              Done Editing (Back to Review) &rarr;
+            </Button>
+          )}
+
           {step !== "review" ? (
             <Button
               color="primary"

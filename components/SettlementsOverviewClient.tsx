@@ -15,6 +15,9 @@ import {
   Search,
   User,
   ArrowRight,
+  Receipt,
+  Wallet,
+  CheckCircle2,
 } from "lucide-react";
 import type { StaffMember } from "@/lib/types";
 import { useAuth } from "@/lib/Auth";
@@ -98,7 +101,7 @@ export default function SettlementsOverviewClient({
           radius="sm"
           size="sm"
           startContent={<HardHat size={16} className="text-primary shrink-0 transition-transform group-hover:scale-110" />}
-          className="group font-medium text-[#F8F4E6]/90 hover:text-[#D9A427] bg-[#F8F4E6]/10 hover:bg-[#D9A427]/20 border border-[#D9A427]/40 hover:border-[#D9A427]/70 transition-all shadow-sm"
+          className="group font-medium text-[#F8F4E6]/90 hover:text-primary bg-[#F8F4E6]/10 hover:bg-primary/20 border border-primary/40 hover:border-primary/70 transition-all shadow-sm"
         >
           Staff Overview
         </Button>
@@ -109,68 +112,76 @@ export default function SettlementsOverviewClient({
         <h1 className="text-3xl font-semibold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
           Staff Settlements
         </h1>
-        <p className="text-sm text-foreground/60 mt-1">
-          Overview of all staff settlement payouts and cleared batches
+        <p className="text-sm text-[#F8F4E6]/60 mt-1">
+          Overview of all staff settlement payouts, cleared batches, and balances
         </p>
       </div>
 
-      {/* Aggregate KPI summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-content1 border border-divider">
-          <CardBody className="p-4 space-y-1">
-            <p className="text-xs text-foreground/50 font-medium">TOTAL SETTLED AMOUNT</p>
-            <p className="text-2xl font-bold text-success font-display">
+      {/* Aggregate KPI Summary Cards (2x2 on mobile, 4 columns on desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <Card className="bg-content1 border border-divider shadow-sm">
+          <CardBody className="p-3.5 sm:p-4 space-y-1">
+            <p className="text-[10px] sm:text-xs text-foreground/50 font-medium uppercase tracking-wider truncate">
+              Total Settled
+            </p>
+            <p className="text-lg sm:text-2xl font-bold text-success font-display truncate">
               {inr(overallStats.grandSettledAmount)}
             </p>
-            <p className="text-xs text-foreground/40">Paid out across all staff batches</p>
+            <p className="text-[10px] sm:text-xs text-foreground/40 truncate">Across all staff batches</p>
           </CardBody>
         </Card>
 
-        <Card className="bg-content1 border border-divider">
-          <CardBody className="p-4 space-y-1">
-            <p className="text-xs text-foreground/50 font-medium">TOTAL ORDERS SETTLED</p>
-            <p className="text-2xl font-bold text-primary font-mono">
+        <Card className="bg-content1 border border-divider shadow-sm">
+          <CardBody className="p-3.5 sm:p-4 space-y-1">
+            <p className="text-[10px] sm:text-xs text-foreground/50 font-medium uppercase tracking-wider truncate">
+              Orders Settled
+            </p>
+            <p className="text-lg sm:text-2xl font-bold text-primary font-mono truncate">
               {overallStats.grandSettledOrders}
             </p>
-            <p className="text-xs text-foreground/40">Orders cleared in settlements</p>
+            <p className="text-[10px] sm:text-xs text-foreground/40 truncate">Orders cleared in batches</p>
           </CardBody>
         </Card>
 
-        <Card className="bg-content1 border border-divider">
-          <CardBody className="p-4 space-y-1">
-            <p className="text-xs text-foreground/50 font-medium">SETTLEMENT BATCHES</p>
-            <p className="text-2xl font-bold text-secondary font-mono">
+        <Card className="bg-content1 border border-divider shadow-sm">
+          <CardBody className="p-3.5 sm:p-4 space-y-1">
+            <p className="text-[10px] sm:text-xs text-foreground/50 font-medium uppercase tracking-wider truncate">
+              Settlement Batches
+            </p>
+            <p className="text-lg sm:text-2xl font-bold text-foreground font-mono truncate">
               {overallStats.grandBatchesCount}
             </p>
-            <p className="text-xs text-foreground/40">Total batches created</p>
+            <p className="text-[10px] sm:text-xs text-foreground/40 truncate">Total batches created</p>
           </CardBody>
         </Card>
 
-        <Card className="bg-content1 border border-divider">
-          <CardBody className="p-4 space-y-1">
-            <p className="text-xs text-foreground/50 font-medium">STAFF WITH SETTLEMENTS</p>
-            <p className="text-2xl font-bold text-foreground font-mono">
+        <Card className="bg-content1 border border-divider shadow-sm">
+          <CardBody className="p-3.5 sm:p-4 space-y-1">
+            <p className="text-[10px] sm:text-xs text-foreground/50 font-medium uppercase tracking-wider truncate">
+              Staff With Batches
+            </p>
+            <p className="text-lg sm:text-2xl font-bold text-foreground font-mono truncate">
               {overallStats.staffWithSettlementsCount} / {overallStats.totalStaffCount}
             </p>
-            <p className="text-xs text-foreground/40">Staff members with cleared batches</p>
+            <p className="text-[10px] sm:text-xs text-foreground/40 truncate">Members with payouts</p>
           </CardBody>
         </Card>
       </div>
 
-      {/* Staff Members Grid (Same like Staff page) */}
-      <Card className="bg-content1">
-        <CardBody className="p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
+      {/* Staff Members Grid */}
+      <Card className="bg-content1 border border-divider shadow-sm">
+        <CardBody className="p-4 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold text-[#F8F4E6]" style={{ fontFamily: "var(--font-display)" }}>
+              <h2 className="text-xl font-semibold text-foreground" style={{ fontFamily: "var(--font-display)" }}>
                 Staff Members ({visibleStaff.length})
               </h2>
-              <p className="text-xs text-foreground/50">
-                Click any staff member to open their settlements in a dedicated page with query param.
+              <p className="text-xs text-foreground/50 mt-0.5">
+                Click any staff member to view their complete settlement history and cleared batches.
               </p>
             </div>
 
-            <div className="max-w-xs w-full">
+            <div className="w-full sm:max-w-xs">
               <Input
                 placeholder="Search staff by name or phone..."
                 variant="bordered"
@@ -202,7 +213,7 @@ export default function SettlementsOverviewClient({
                 <div
                   key={member.id}
                   onClick={() => handleOpenStaffSettlements(member.id)}
-                  className="rounded-lg p-4 transition-all border bg-content2/30 border-divider hover:bg-content2/60 hover:border-primary/50 cursor-pointer flex flex-col justify-between"
+                  className="rounded-xl p-4 transition-all border bg-content2/30 border-divider hover:bg-content2/60 hover:border-primary/50 cursor-pointer flex flex-col justify-between shadow-xs"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
@@ -228,7 +239,7 @@ export default function SettlementsOverviewClient({
                       )}
                     </div>
 
-                    <div className="space-y-1.5 pt-2 border-t border-divider/60 text-xs">
+                    <div className="space-y-1.5 pt-2.5 border-t border-divider/60 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-foreground/50">Total Settled:</span>
                         <span className="font-bold text-success font-mono text-sm">
@@ -281,4 +292,3 @@ export default function SettlementsOverviewClient({
     </div>
   );
 }
-

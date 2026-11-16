@@ -92,6 +92,7 @@ export default function AutoDieselModal({
         filledByDriver: type === "diesel" ? filledByDriver.trim() : "",
         stationOrVehicle: "", // Removed per notebook instruction
         repairItem: type === "repair" ? repairItem.trim() : "",
+        reason: type === "repair" ? repairItem.trim() : "",
         notes: notes.trim(),
       };
 

@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Spinner } from "@heroui/react";
 import { apiFetch } from "@/lib/api";
 import RideWizard from "@/components/autorides/RideWizard";
 import BackButton from "@/components/BackButton";
 import type { AutoDriver } from "@/lib/types";
 
-export default function NewRidePage() {
+function NewRideContent() {
+  const searchParams = useSearchParams();
+  const customer = searchParams.get("customer") || "";
+  const phone = searchParams.get("phone") || "";
+  const pickup = searchParams.get("pickup") || "";
+
   const [drivers, setDrivers] = useState<AutoDriver[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +46,7 @@ export default function NewRidePage() {
           className="text-3xl font-bold text-[#F8F4E6] mt-1"
           style={{ fontFamily: "var(--font-display)" }}
         >
-          Book an Auto Ride
+          {customer ? `Add Ride for ${customer}` : "Book an Auto Ride"}
         </h1>
       </div>
       {loading ? (
@@ -48,11 +54,30 @@ export default function NewRidePage() {
           <Spinner label="Loading pilots…" color="warning" />
         </div>
       ) : (
-        <RideWizard drivers={drivers} />
+        <RideWizard
+          drivers={drivers}
+          initialCustomerName={customer}
+          initialCustomerPhone={phone}
+          initialPickup={pickup}
+        />
       )}
       <div className="pt-4 border-t border-[#D9A427]/20 flex items-center justify-between">
         <BackButton href="/auto-rides/rides" label="Back to Rides" />
       </div>
     </div>
+  );
+}
+
+export default function NewRidePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center py-16">
+          <Spinner label="Loading..." color="warning" />
+        </div>
+      }
+    >
+      <NewRideContent />
+    </Suspense>
   );
 }

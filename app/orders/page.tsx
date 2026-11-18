@@ -159,7 +159,9 @@ function OrdersList({
                       </Button>
                       <Button
                         as="a"
-                        href={`https://wa.me/91${cleanPhone}`}
+                        href={`https://wa.me/91${cleanPhone}?text=${encodeURIComponent(
+                          `Anjaneya Decorations — ${o.id}\nOrder Name: ${o.customer?.name || o.id}\nDate: ${o.eventDate || "-"}\nProgram: ${o.program?.type || o.serviceType}\nPayment Status: ${orderDue(o) <= 0 ? "Fully Paid" : `Pending (Due: ₹${orderDue(o).toLocaleString("en-IN")})`}`
+                        )}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         size="sm"

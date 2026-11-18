@@ -28,18 +28,18 @@ export function waLink(phone: string | undefined | null, message: string): strin
  * pattern as the existing customer WhatsApp share.
  */
 export function buildStaffWhatsAppMessage(order: Order, staffName: string): string {
-  const sentDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   const link = mapsLinkForOrder(order);
+  const orderName = order.customer?.name || order.id;
+  const eventDate = order.eventDate || "-";
+  const location = link || order.customer?.address || "";
+
   const lines = [
-    `Anjaneya Decorations — ${order.id}`,
-    `Hi ${staffName}, you're assigned to this job:`,
-    `Customer: ${order.customer?.name || "-"}`,
-    `Program: ${order.program?.type || order.serviceType}`,
-    `Event date: ${order.eventDate || "-"}`,
-    order.customer?.address ? `Address: ${order.customer.address}` : "",
-    link ? `Location: ${link}` : "",
-    `Sent: ${sentDate}`,
-    `— the staff report PDF is attached separately.`,
+    `Anjaneya Decorations`,
+    `Order Name: ${orderName}`,
+    `Date: ${eventDate}`,
+    `Assigned to: ${staffName}`,
+    location ? `Location: ${location}` : "",
+    `The staff report PDF is attached.`,
   ].filter(Boolean);
   return lines.join("\n");
 }

@@ -20,7 +20,7 @@ import {
   TableCell,
   useDisclosure,
 } from "@heroui/react";
-import { Pencil, Check, X, ArrowLeft, Wallet, Search, LayoutGrid, List as ListIcon, Receipt } from "lucide-react";
+import { Pencil, Check, X, ArrowLeft, Wallet, Search, LayoutGrid, List as ListIcon, Receipt, MessageCircle } from "lucide-react";
 import type { DateValue } from "@react-types/datepicker";
 import type { RangeValue } from "@react-types/shared";
 import { getLocalTimeZone, today } from "@internationalized/date";
@@ -234,6 +234,24 @@ export default function StaffAssignmentsClient({
     setOrderQuery("");
     setPaymentFilter("all");
     setPage(1);
+  }
+
+  function sendAssignmentWhatsApp(a: StaffAssignmentRecord): void {
+    const digits = (staff.phone || "").replace(/\D/g, "");
+    if (!digits) {
+      alert(`${staff.name} doesn't have a phone number on file.`);
+      return;
+    }
+    const phone = digits.length === 10 ? `91${digits}` : digits;
+    const lines = [
+      `Anjaneya Decorations`,
+      `Order Name: ${a.customerName || a.orderId}`,
+      `Date: ${a.date || "-"}`,
+      `Assigned to: ${staff.name}`,
+      `The staff report PDF is attached.`,
+    ].filter(Boolean);
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   // Staff can only view their own assignments; anyone else gets turned away.
@@ -676,6 +694,20 @@ export default function StaffAssignmentsClient({
                               >
                                 <Wallet size={16} />
                               </Button>
+                              {staff.phone && (
+                                <Button
+                                  isIconOnly
+                                  size="sm"
+                                  variant="flat"
+                                  color="success"
+                                  radius="sm"
+                                  onPress={() => sendAssignmentWhatsApp(a)}
+                                  aria-label="Send assignment via WhatsApp"
+                                  title={`Send assignment for ${a.customerName || a.orderId} to ${staff.name} on WhatsApp`}
+                                >
+                                  <MessageCircle size={16} />
+                                </Button>
+                              )}
                               {isOwner && (
                                 <Button
                                   isIconOnly
@@ -845,6 +877,20 @@ export default function StaffAssignmentsClient({
                                 >
                                   <Wallet size={16} />
                                 </Button>
+                                {staff.phone && (
+                                  <Button
+                                    isIconOnly
+                                    size="sm"
+                                    variant="flat"
+                                    color="success"
+                                    radius="sm"
+                                    onPress={() => sendAssignmentWhatsApp(a)}
+                                    aria-label="Send assignment via WhatsApp"
+                                    title={`Send assignment for ${a.customerName || a.orderId} to ${staff.name} on WhatsApp`}
+                                  >
+                                    <MessageCircle size={16} />
+                                  </Button>
+                                )}
                                 {isOwner && (
                                   <Button
                                     isIconOnly

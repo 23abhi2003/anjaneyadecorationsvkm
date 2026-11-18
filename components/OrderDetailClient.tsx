@@ -23,7 +23,7 @@ import Image from "next/image";
 import { Phone, MessageCircle } from "lucide-react";
 import type { Order, OrderStatus, CompletionStatus, StaffMember } from "@/lib/types";
 import { collectItemLines, mapsLinkForOrder, waLink, buildStaffWhatsAppMessage } from "@/lib/orderDisplay";
-import { generateInvoicePdf, generateStaffReportPdf, getStaffReportPdfFile, type InvoiceLanguage } from "@/lib/pdf";
+import { generateInvoicePdf, getInvoicePdfFile, generateStaffReportPdf, getStaffReportPdfFile, type InvoiceLanguage } from "@/lib/pdf";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { assignmentMoney, inr } from "@/lib/staffPay";
@@ -57,7 +57,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
   const [itemFilter, setItemFilter] = useState<"all" | "remaining" | "returned">("all");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
-  const [pdfBusy, setPdfBusy] = useState<"invoice" | "report" | null>(null);
+  const [pdfBusy, setPdfBusy] = useState<"invoice" | "report" | "whatsapp" | null>(null);
   // Which staff-send button is currently mid-flight — a staffId, "all", or null.
   const [staffSendBusy, setStaffSendBusy] = useState<string | null>(null);
   // Remaining staff to message after "Send to Staff (all)" — browsers only allow ONE
@@ -137,7 +137,7 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     }
   }
 
-  function onShareWhatsApp(): void {
+  async function onShareWhatsApp(): Promise<void> {
     const digits = (order.customer.phone || "").replace(/\D/g, "");
     if (!digits) {
       alert("This order has no phone number saved for the customer yet.");
@@ -145,17 +145,50 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
     }
     // Assume a 10-digit local number is Indian (+91); leave longer numbers as-is.
     const phone = digits.length === 10 ? `91${digits}` : digits;
+    const isPaid = due <= 0;
+    const paymentStatusText = isPaid ? "Fully Paid" : `Pending (Due: ₹${due.toLocaleString("en-IN")})`;
     const lines = [
       `Anjaneya Decorations — ${order.id}`,
-      `Hi ${order.customer.name || ""}, here are your order details:`,
+      `Order Name: ${order.customer.name || order.id}`,
+      `Date: ${order.eventDate || "-"}`,
       `Program: ${order.program?.type || order.serviceType}`,
-      `Event date: ${order.eventDate || "-"}`,
+      `Payment Status: ${paymentStatusText}`,
       ...(isOwner
         ? [`Total: ₹${total.toLocaleString("en-IN")}  Advance: ₹${advance.toLocaleString("en-IN")}  Due: ₹${due.toLocaleString("en-IN")}`]
         : []),
+      ``,
+      `Thank you for choosing Anjaneya Decorations!`,
+      `The invoice PDF is attached.`,
     ];
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    const message = lines.filter(Boolean).join("\n");
+
+    setPdfBusy("whatsapp");
+    try {
+      const invoiceOrder = { ...order, status: overallStatus, invoice: { ...invoice, dueAmount: String(due) }, notes };
+      const file = await getInvoicePdfFile(invoiceOrder, "en");
+
+      // On mobile devices supporting navigator.share with files, open WhatsApp directly with file and message attached
+      const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
+      if (nav.canShare?.({ files: [file] }) && nav.share) {
+        try {
+          await nav.share({
+            files: [file],
+            text: message,
+            title: `Invoice — ${order.id} — ${order.customer.name || ""}`,
+          });
+          return;
+        } catch (err) {
+          if ((err as { name?: string })?.name === "AbortError") return;
+        }
+      }
+
+      // Desktop fallback: open WhatsApp chat with prefilled message and trigger invoice PDF download
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      await generateInvoicePdf(invoiceOrder, "en");
+    } finally {
+      setPdfBusy(null);
+    }
   }
 
   /** Looks up a staff member's saved phone number from their id. Empty string if none on file. */
@@ -472,9 +505,26 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
         <Button color="primary" radius="sm" variant="flat" onPress={onDownloadStaffReport} isLoading={pdfBusy === "report"} className="font-semibold">
           Download Staff Report
         </Button>
-        <Button color="success" radius="sm" variant="solid" onPress={onShareWhatsApp} className="font-semibold">
-          Share on WhatsApp
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            color="success"
+            radius="sm"
+            variant="solid"
+            onPress={onShareWhatsApp}
+            isLoading={pdfBusy === "whatsapp"}
+            className="font-semibold"
+          >
+            Share on WhatsApp
+          </Button>
+          <Chip
+            size="md"
+            variant="flat"
+            color={due <= 0 ? "success" : "danger"}
+            className="font-bold uppercase tracking-wider text-xs h-10 px-3"
+          >
+            {due <= 0 ? "Fully Paid" : `Pending · Due ₹${due.toLocaleString("en-IN")}`}
+          </Chip>
+        </div>
         {isOwner && order.staffAssigned && order.staffAssigned.length > 0 && (
           <Button
             color="success"
@@ -861,9 +911,19 @@ export default function OrderDetailClient({ order, staffList = [] }: { order: Or
             <>
               <Divider />
               <div>
-                <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-display)" }}>
-                  Invoice
-                </h2>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                    Invoice
+                  </h2>
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    color={due <= 0 ? "success" : "danger"}
+                    className="font-bold uppercase tracking-wider text-xs"
+                  >
+                    {due <= 0 ? "Fully Paid" : `Pending · Due ₹${due.toLocaleString("en-IN")}`}
+                  </Chip>
+                </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <Input
                     label="Total amount (₹)"

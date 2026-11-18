@@ -214,11 +214,10 @@ function addThankYouFooter(doc: jsPDF, message = "Thank you for your business!",
   }
 }
 
-/** Customer-facing invoice: full item list plus every amount/payment detail. */
-export async function generateInvoicePdf(order: Order, language: InvoiceLanguage = "en"): Promise<void> {
+/** Customer-facing invoice document builder. */
+export async function buildInvoiceDoc(order: Order, language: InvoiceLanguage = "en"): Promise<jsPDF> {
   if (language === "te") {
-    await generateInvoicePdfTelugu(order);
-    return;
+    return buildInvoiceDocTelugu(order);
   }
   const doc = new jsPDF();
   let y = await addHeader(doc, "Invoice", order.id);
@@ -242,7 +241,9 @@ export async function generateInvoicePdf(order: Order, language: InvoiceLanguage
 
   const total = parseFloat(order.invoice.totalAmount || "0") || 0;
   const advance = parseFloat(order.invoice.advancePaid || "0") || 0;
-  const due = order.status === "completed" ? 0 : Math.max(total - advance, 0);
+  const isFullyPaid = order.paymentCompletionStatus === "completed" || order.status === "completed" || (total > 0 && advance >= total);
+  const due = isFullyPaid ? 0 : Math.max(total - advance, 0);
+  const isPaid = due <= 0;
 
   y = sectionTitle(doc, "Payment", y, COLORS.royal);
   y = writeLine(doc, "Total amount", `Rs. ${total.toLocaleString("en-IN")}`, MARGIN, y);
@@ -256,6 +257,32 @@ export async function generateInvoicePdf(order: Order, language: InvoiceLanguage
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.text(`Due amount: Rs. ${due.toLocaleString("en-IN")}`, MARGIN + 3, y + 1.5);
+
+  // Visible Status Badge: FULLY PAID or PENDING
+  const badgeW = 46;
+  const badgeH = 10;
+  const badgeX = PAGE_WIDTH - MARGIN - badgeW;
+  const badgeY = y - 5;
+  if (isPaid) {
+    doc.setFillColor(220, 245, 230);
+    doc.setDrawColor(46, 125, 50);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.5, 1.5, "FD");
+    doc.setTextColor(46, 125, 50);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("FULLY PAID", badgeX + badgeW / 2, y + 1.5, { align: "center" });
+  } else {
+    doc.setFillColor(255, 235, 238);
+    doc.setDrawColor(198, 40, 40);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.5, 1.5, "FD");
+    doc.setTextColor(198, 40, 40);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("PENDING", badgeX + badgeW / 2, y + 1.5, { align: "center" });
+  }
+
   doc.setFont("helvetica", "normal");
   y += 12;
 
@@ -286,8 +313,22 @@ export async function generateInvoicePdf(order: Order, language: InvoiceLanguage
   }
 
   addThankYouFooter(doc, "Thank you for choosing Anjaneya Decorations!");
+  return doc;
+}
 
-  doc.save(`${order.id}-invoice.pdf`);
+/** Customer-facing invoice: full item list plus every amount/payment detail. */
+export async function generateInvoicePdf(order: Order, language: InvoiceLanguage = "en"): Promise<void> {
+  const doc = await buildInvoiceDoc(order, language);
+  const suffix = language === "te" ? "-invoice-telugu.pdf" : "-invoice.pdf";
+  doc.save(`${order.id}${suffix}`);
+}
+
+/** Returns the customer invoice as a File for web share sheet / WhatsApp sharing. */
+export async function getInvoicePdfFile(order: Order, language: InvoiceLanguage = "en"): Promise<File> {
+  const doc = await buildInvoiceDoc(order, language);
+  const blob = doc.output("blob");
+  const suffix = language === "te" ? "-invoice-telugu.pdf" : "-invoice.pdf";
+  return new File([blob], `${order.id}${suffix}`, { type: "application/pdf" });
 }
 
 /**
@@ -354,7 +395,7 @@ function writeItemListTe(doc: jsPDF, items: string[], y: number): number {
  * typed themselves (name, address, notes, a custom "Others" value) is left
  * exactly as entered — there's no reliable way to auto-translate that.
  */
-async function generateInvoicePdfTelugu(order: Order): Promise<void> {
+async function buildInvoiceDocTelugu(order: Order): Promise<jsPDF> {
   await loadTeluguFonts();
   const doc = new jsPDF();
   let y = await addHeader(doc, LABELS_TE.invoiceTitle, order.id, true);
@@ -378,7 +419,9 @@ async function generateInvoicePdfTelugu(order: Order): Promise<void> {
 
   const total = parseFloat(order.invoice.totalAmount || "0") || 0;
   const advance = parseFloat(order.invoice.advancePaid || "0") || 0;
-  const due = order.status === "completed" ? 0 : Math.max(total - advance, 0);
+  const isFullyPaid = order.paymentCompletionStatus === "completed" || order.status === "completed" || (total > 0 && advance >= total);
+  const due = isFullyPaid ? 0 : Math.max(total - advance, 0);
+  const isPaid = due <= 0;
 
   y = sectionTitleTe(doc, LABELS_TE.payment, y, COLORS.royal);
   y = writeLineTe(doc, LABELS_TE.totalAmount, formatRupeesTe(total), MARGIN, y, true);
@@ -394,6 +437,28 @@ async function generateInvoicePdfTelugu(order: Order): Promise<void> {
     color: COLORS.ochre,
   });
   doc.addImage(dueImg.dataUrl, "PNG", MARGIN + 3, y + 1.5 - dueImg.ascentMm, dueImg.widthMm, dueImg.heightMm);
+
+  // Visible Status Badge in Telugu
+  const badgeW = 46;
+  const badgeH = 10;
+  const badgeX = PAGE_WIDTH - MARGIN - badgeW;
+  const badgeY = y - 5;
+  if (isPaid) {
+    doc.setFillColor(220, 245, 230);
+    doc.setDrawColor(46, 125, 50);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.5, 1.5, "FD");
+    const badgeImg = teluguTextToImage("పూర్తి చెల్లింపు", { sizePt: 9.5, bold: true, color: [46, 125, 50] });
+    doc.addImage(badgeImg.dataUrl, "PNG", badgeX + (badgeW - badgeImg.widthMm) / 2, y + 1.5 - badgeImg.ascentMm, badgeImg.widthMm, badgeImg.heightMm);
+  } else {
+    doc.setFillColor(255, 235, 238);
+    doc.setDrawColor(198, 40, 40);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.5, 1.5, "FD");
+    const badgeImg = teluguTextToImage("పెండింగ్", { sizePt: 9.5, bold: true, color: [198, 40, 40] });
+    doc.addImage(badgeImg.dataUrl, "PNG", badgeX + (badgeW - badgeImg.widthMm) / 2, y + 1.5 - badgeImg.ascentMm, badgeImg.widthMm, badgeImg.heightMm);
+  }
+
   y += 12;
 
   y = writeLineTe(doc, LABELS_TE.paymentType, translatePaymentType(order.invoice.paymentType), MARGIN, y, true);
@@ -423,8 +488,7 @@ async function generateInvoicePdfTelugu(order: Order): Promise<void> {
   }
 
   addThankYouFooter(doc, LABELS_TE.thankYou, true);
-
-  doc.save(`${order.id}-invoice-telugu.pdf`);
+  return doc;
 }
 
 /** Builds the staff report doc without saving/downloading it — shared by the download and share-sheet entry points below. */

@@ -225,6 +225,13 @@ export default function RideDetailClient({
               >
                 {ride.customerName}
               </h1>
+              {ride.reason && (
+                <div className="mt-1">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F3ECD8] text-[#8B4A15] border border-[#D9A427]/40 shadow-xs">
+                    🎯 Purpose: {ride.reason}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <p className="text-[#F8F4E6]/70 text-sm mt-1.5 flex items-center gap-2 font-mono">

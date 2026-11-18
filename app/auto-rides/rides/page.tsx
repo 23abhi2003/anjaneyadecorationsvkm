@@ -20,6 +20,7 @@ import {
   Car,
   Search,
   PlusCircle,
+  Plus,
   Calendar,
   MapPin,
   Phone,
@@ -35,6 +36,7 @@ import { useAuth } from "@/lib/Auth";
 import type { AutoRide, AutoDriver, Customer } from "@/lib/types";
 import BackButton from "@/components/BackButton";
 import RideDetailModal from "@/components/autorides/RideDetailModal";
+import QuickAddRideModal from "@/components/autorides/QuickAddRideModal";
 
 export default function AutoRidesListPage() {
   const router = useRouter();
@@ -65,6 +67,19 @@ export default function AutoRidesListPage() {
     onOpen: openDetail,
     onOpenChange: onDetailOpenChange,
   } = useDisclosure();
+
+  // Quick Add Ride Modal (+ button on card)
+  const [quickAddBaseRide, setQuickAddBaseRide] = useState<AutoRide | null>(null);
+  const {
+    isOpen: isQuickAddOpen,
+    onOpen: openQuickAdd,
+    onOpenChange: onQuickAddOpenChange,
+  } = useDisclosure();
+
+  function handleQuickAddRide(ride: AutoRide) {
+    setQuickAddBaseRide(ride);
+    openQuickAdd();
+  }
 
   async function loadRides() {
     setLoading(true);
@@ -106,6 +121,18 @@ export default function AutoRidesListPage() {
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  // Compute number of rides done for each customer (Photo 2 instruction)
+  const customerRideCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of rides) {
+      const name = (r.customerName || "").trim().toLowerCase();
+      if (name) {
+        map[name] = (map[name] || 0) + 1;
+      }
+    }
+    return map;
+  }, [rides]);
+
   const filteredRides = useMemo(() => {
     const myName = (user?.name || "").trim().toLowerCase();
     const hasMyTrips = isDriver && myName && rides.some((r) => (r.driverAssigned || "").trim().toLowerCase() === myName);
@@ -123,6 +150,7 @@ export default function AutoRidesListPage() {
         const matches =
           r.customerName?.toLowerCase().includes(q) ||
           r.customerPhone?.includes(q) ||
+          r.reason?.toLowerCase().includes(q) ||
           r.pickupLocation?.toLowerCase().includes(q) ||
           r.dropLocation?.toLowerCase().includes(q) ||
           r.driverAssigned?.toLowerCase().includes(q) ||
@@ -323,6 +351,8 @@ export default function AutoRidesListPage() {
             const fare = parseFloat(ride.totalAmount || "0") || 0;
             const due = parseFloat(ride.dueAmount || "0") || 0;
             const driverWage = parseFloat(ride.driverPay || "0") || 0;
+            const custKey = (ride.customerName || "").trim().toLowerCase();
+            const personRideCount = customerRideCounts[custKey] || 1;
 
             return (
               <Card
@@ -330,15 +360,40 @@ export default function AutoRidesListPage() {
                 as={Link}
                 href={`/auto-rides/rides/detail?id=${encodeURIComponent(ride.id)}`}
                 isPressable
-                className="p-4 bg-white/95 border border-[#D9A427]/30 shadow-sm hover:shadow-md transition-all text-left block"
+                className="p-4 bg-white/95 border border-[#D9A427]/30 shadow-sm hover:shadow-md transition-all text-left block rounded-xl"
               >
+                {/* Header: ID, Person's Ride Count Badge (Photo 2), + Button, Status */}
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="text-xs font-bold text-primary font-mono">{ride.id}</span>
-                    <h3 className="text-base font-semibold text-[#241129]">{ride.customerName}</h3>
-                    <p className="text-xs text-gray-500 font-mono">{ride.customerPhone || "No phone"}</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-primary font-mono tracking-wide px-1.5 py-0.5 rounded bg-primary/10 border border-primary/25">
+                      {ride.id}
+                    </span>
+                    {/* Badge: No. of Rides done for this person (Photo 2) */}
+                    <Chip
+                      size="sm"
+                      variant="flat"
+                      color="secondary"
+                      className="font-mono text-[11px] font-bold h-6 px-1.5 bg-[#5B2674]/15 text-[#5B2674]"
+                    >
+                      {personRideCount} {personRideCount === 1 ? "Ride" : "Rides"}
+                    </Chip>
+
+                    {/* Plus button to add a ride for this customer (Photo 2 & user request) */}
+                    <button
+                      type="button"
+                      title={`Add ride for ${ride.customerName}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleQuickAddRide(ride);
+                      }}
+                      className="w-6 h-6 rounded-full bg-[#D9A427] hover:bg-[#D9A427]/80 text-[#241129] flex items-center justify-center font-bold text-sm shadow-xs transition-transform active:scale-90"
+                    >
+                      +
+                    </button>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
+
+                  <div className="flex items-center gap-1.5">
                     {(() => {
                       const isFullyCompleted =
                         ride.status === "completed" &&
@@ -351,9 +406,9 @@ export default function AutoRidesListPage() {
                             size="sm"
                             variant="flat"
                             color="success"
-                            className="font-bold text-xs capitalize"
+                            className="font-bold text-[11px] capitalize h-5"
                           >
-                            Fully Completed
+                            Completed
                           </Chip>
                         );
                       }
@@ -364,7 +419,7 @@ export default function AutoRidesListPage() {
                             size="sm"
                             variant="flat"
                             color="danger"
-                            className="font-bold text-xs capitalize"
+                            className="font-bold text-[11px] capitalize h-5"
                           >
                             Cancelled
                           </Chip>
@@ -376,64 +431,112 @@ export default function AutoRidesListPage() {
                           size="sm"
                           variant="flat"
                           color="warning"
-                          className="font-bold text-xs capitalize"
+                          className="font-bold text-[11px] capitalize h-5"
                         >
                           Pending
                         </Chip>
                       );
                     })()}
-                    {isOwner && (
-                      <Chip
-                        size="sm"
-                        variant="dot"
-                        color={ride.paymentStatus === "paid" ? "success" : "warning"}
-                        className="font-mono text-[11px]"
-                      >
-                        {ride.paymentStatus === "paid" ? "Paid" : "Due"}
-                      </Chip>
+                  </div>
+                </div>
+
+                {/* Customer Name, Phone & Purpose/Reason (Photo 1 & 2) */}
+                <div className="mt-2.5 space-y-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-base font-bold text-[#241129] truncate">
+                      {ride.customerName}
+                    </h3>
+                    <span className="font-mono text-xs text-gray-500 shrink-0">
+                      {ride.date}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    {ride.reason && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#F3ECD8] text-[#8B4A15] font-semibold text-[11px] border border-[#D9A427]/30">
+                        {ride.reason}
+                      </span>
+                    )}
+                    {ride.customerPhone && (
+                      <span className="text-gray-500 font-mono text-[11px]">
+                        {ride.customerPhone}
+                      </span>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
-                  <div className="flex items-center gap-1 truncate max-w-[180px]">
+                {/* Route Location From -> To (Clean address, same as Anjaneya Decorations) */}
+                <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
+                  <div className="flex items-center gap-1.5 truncate max-w-[220px]">
                     <MapPin size={13} className="text-[#3F6B1F] shrink-0" />
-                    <span className="truncate">{ride.pickupLocation || "VKM"}</span>
-                    <span>→</span>
-                    <span className="truncate">{ride.dropLocation || "Drop"}</span>
+                    {ride.pickupLocation && ride.dropLocation ? (
+                      <span className="font-medium text-gray-800 truncate">
+                        {ride.pickupLocation} → {ride.dropLocation}
+                      </span>
+                    ) : ride.pickupLocation ? (
+                      <span className="font-medium text-gray-800 truncate">
+                        {ride.pickupLocation}
+                      </span>
+                    ) : ride.dropLocation ? (
+                      <span className="font-medium text-gray-800 truncate">
+                        {ride.dropLocation}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 italic">Location not specified</span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1 font-mono text-[11px] shrink-0">
-                    <Calendar size={12} /> {ride.date}
-                  </div>
+                  {ride.driverAssigned && ride.driverAssigned !== "Unassigned" && (
+                    <span className="text-[11px] font-mono text-gray-400 shrink-0">
+                      Pilot: {ride.driverAssigned}
+                    </span>
+                  )}
                 </div>
 
-                <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
-                  {/* If Owner: show Total Fare and Driver Wage */}
+                {/* Amount, Payment Status (Due/Paid) & Quick Add Ride button */}
+                <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center justify-between">
                   {isOwner ? (
                     <>
-                      <div>
-                        <span className="text-[10px] uppercase font-mono text-gray-400 block">Total Fare</span>
+                      <div className="flex items-baseline gap-2">
                         <span className="text-base font-bold text-[#241129]">
                           ₹{fare.toLocaleString("en-IN")}
                         </span>
-                        {due > 0 && (
-                          <span className="text-[10px] font-mono text-warning-600 block">
-                            Due: ₹{due.toLocaleString("en-IN")}
-                          </span>
-                        )}
+                        <Chip
+                          size="sm"
+                          variant="dot"
+                          color={ride.paymentStatus === "paid" || due === 0 ? "success" : "warning"}
+                          className="font-mono text-[11px] h-5"
+                        >
+                          {ride.paymentStatus === "paid" || due === 0 ? "Paid" : `Due: ₹${due}`}
+                        </Chip>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase font-mono text-primary font-bold block">Pilot ({ride.driverAssigned})</span>
-                        <span className="text-sm font-bold text-[#241129]">
-                          ₹{driverWage.toLocaleString("en-IN")}
-                        </span>
+
+                      <div className="flex items-center gap-2">
+                        {driverWage > 0 && (
+                          <div className="text-right hidden sm:block">
+                            <span className="text-[10px] uppercase font-mono text-gray-400 block">Pilot Wage</span>
+                            <span className="text-xs font-bold text-[#5B2674]">
+                              ₹{driverWage.toLocaleString("en-IN")}
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleQuickAddRide(ride);
+                          }}
+                          className="px-2 py-0.5 rounded-md text-[11px] font-bold text-[#241129] bg-[#D9A427] hover:bg-[#D9A427]/80 flex items-center gap-1 shadow-xs transition-colors"
+                        >
+                          <Plus size={11} strokeWidth={3} />
+                          Add Ride
+                        </button>
                       </div>
                     </>
                   ) : (
-                    /* If Driver: ONLY driver and amount appear! (same as staff) */
                     <div className="w-full flex items-center justify-between bg-primary/15 p-2 rounded-lg">
                       <span className="text-xs font-bold text-[#241129]">Your Pilot Pay:</span>
-                      <span className="text-lg font-bold text-success">
+                      <span className="text-base font-bold text-success">
                         ₹{driverWage.toLocaleString("en-IN")}
                       </span>
                     </div>
@@ -444,6 +547,21 @@ export default function AutoRidesListPage() {
           })}
         </div>
       )}
+
+      {/* Floating Action Button for Add Ride */}
+      <div className="fixed bottom-6 right-6 z-40">
+        <Button
+          as={Link}
+          href="/auto-rides/new"
+          color="primary"
+          radius="full"
+          size="md"
+          className="font-bold text-[#241129] bg-primary shadow-2xl flex items-center gap-1.5 px-4 h-12 border border-[#241129] hover:scale-105 transition-transform"
+          startContent={<Plus size={18} strokeWidth={2.5} />}
+        >
+          Add Ride
+        </Button>
+      </div>
 
 
       {/* Ride Detail Modal */}
@@ -456,6 +574,22 @@ export default function AutoRidesListPage() {
         onEdit={(ride) => handleEditRide(ride)}
         onDeleted={() => loadRides()}
         onUpdated={() => loadRides()}
+      />
+
+      {/* Quick Add Ride Modal (Triggered by + on customer ride card) */}
+      <QuickAddRideModal
+        isOpen={isQuickAddOpen}
+        onOpenChange={onQuickAddOpenChange}
+        baseRide={quickAddBaseRide}
+        drivers={drivers}
+        personRideCount={
+          quickAddBaseRide
+            ? customerRideCounts[(quickAddBaseRide.customerName || "").trim().toLowerCase()] || 1
+            : 1
+        }
+        onSuccess={() => {
+          loadRides();
+        }}
       />
     </div>
   );

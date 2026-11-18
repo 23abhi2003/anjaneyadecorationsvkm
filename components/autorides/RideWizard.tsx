@@ -26,36 +26,46 @@ import {
   ArrowLeft,
   Sparkles,
   Edit2,
-  ExternalLink,
   MessageCircle,
-  LocateFixed,
+  Tag,
+  Save,
+  X,
+  Plus,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { loadCustomerDirectory, type ContactDirectoryItem } from "@/lib/customerSuggestions";
 import { waLink, cleanLocationForMaps, buildRouteDirectionsUrl } from "@/lib/orderDisplay";
-import LocationSearchInput from "@/components/autorides/LocationSearchInput";
-import type { AutoRide, AutoDriver } from "@/lib/types";
+import type { AutoRide, AutoDriver, GeoLocation } from "@/lib/types";
 
-type StepKey = "passenger" | "route" | "fare" | "review";
+export type StepKey = "details" | "amount" | "payment";
 
 const STEP_TITLES: Record<StepKey, string> = {
-  passenger: "Passenger Details",
-  route: "Route & Pilot Assignment",
-  fare: "Fare, Settlement & Pilot Pay",
-  review: "Review & Confirm Ride Booking",
+  details: "Step 1: Ride Details",
+  amount: "Step 2: Amount & Summary",
+  payment: "Step 3: Payment & Settlement",
 };
 
 const STEP_SUBTITLES: Record<StepKey, string> = {
-  passenger: "Enter passenger name, contact number, and special instructions",
-  route: "Select pickup and destination points with Google Maps, set date, and assign a pilot",
-  fare: "Set trip fare, advance collected, pilot wage, and settlement status",
-  review: "Verify booking information and dispatch trip assignment directly to the pilot via WhatsApp",
+  details: "Enter passenger name, reason for ride, location (from to to), and date",
+  amount: "Review Step 1 details and enter the fare amount for this ride",
+  payment: "Total fare, advance received, calculated due, and save booking",
 };
+
+export const COMMON_RIDE_REASONS = [
+  "Marriage / Function",
+  "Hospital / Medical",
+  "Goods / Transport",
+  "Temple / Pooja",
+  "School / College",
+  "Personal / Family",
+  "Bus Stand / Railway Station",
+];
 
 interface RideWizardForm {
   customerName: string;
   customerPhone: string;
+  reason: string;
   pickupLocation: string;
   dropLocation: string;
   date: string;
@@ -71,6 +81,7 @@ interface RideWizardForm {
 const emptyForm: RideWizardForm = {
   customerName: "",
   customerPhone: "",
+  reason: "",
   pickupLocation: "",
   dropLocation: "",
   date: new Date().toISOString().slice(0, 10),
@@ -87,6 +98,7 @@ function rideToForm(ride: AutoRide): RideWizardForm {
   return {
     customerName: ride.customerName || "",
     customerPhone: ride.customerPhone || "",
+    reason: ride.reason || "",
     pickupLocation: ride.pickupLocation || "",
     dropLocation: ride.dropLocation || "",
     date: ride.date || new Date().toISOString().slice(0, 10),
@@ -105,12 +117,14 @@ export function buildDriverRideWhatsAppMessage(
     id?: string;
     customerName: string;
     customerPhone?: string;
+    reason?: string;
     pickupLocation?: string;
     dropLocation?: string;
     date: string;
     driverPay?: string;
     totalAmount?: string;
     advancePaid?: string;
+    dueAmount?: string;
     notes?: string;
   },
   driverName: string
@@ -121,16 +135,19 @@ export function buildDriverRideWhatsAppMessage(
 
   const lines = [
     `*Anjaneya Auto Rentals — V.K.M*`,
-    `Namaskaram ${driverName}, you have been assigned to this ride booking:`,
+    `Namaskaram ${driverName}, you have an assigned ride booking:`,
     ``,
     `🚖 *Trip ID*: ${ride.id || "New Booking"}`,
     `📅 *Trip Date*: ${ride.date}`,
     `👤 *Passenger*: ${ride.customerName}`,
-    ride.customerPhone ? `📞 *Passenger Phone*: ${ride.customerPhone}` : "",
-    `🟢 *Pickup Point*: ${pickup}`,
-    `🔴 *Drop Destination*: ${drop}`,
+    ride.customerPhone ? `📞 *Phone*: ${ride.customerPhone}` : "",
+    ride.reason ? `🎯 *Purpose/Reason*: ${ride.reason}` : "",
+    `🟢 *From (Pickup)*: ${pickup}`,
+    `🔴 *To (Drop)*: ${drop}`,
+    ride.totalAmount ? `💰 *Fare Total*: ₹${parseFloat(ride.totalAmount).toLocaleString("en-IN")}` : "",
+    ride.dueAmount && parseFloat(ride.dueAmount) > 0 ? `⚠️ *Pending Due*: ₹${parseFloat(ride.dueAmount).toLocaleString("en-IN")}` : "",
     ride.driverPay && parseFloat(ride.driverPay) > 0
-      ? `💵 *Pilot Wage / Pay*: ₹${parseFloat(ride.driverPay).toLocaleString("en-IN")}`
+      ? `💵 *Pilot Pay*: ₹${parseFloat(ride.driverPay).toLocaleString("en-IN")}`
       : "",
     ride.notes ? `📝 *Notes*: ${ride.notes}` : "",
     ``,
@@ -146,9 +163,15 @@ export function buildDriverRideWhatsAppMessage(
 export default function RideWizard({
   drivers = [],
   initialRide,
+  initialCustomerName = "",
+  initialCustomerPhone = "",
+  initialPickup = "",
 }: {
   drivers: AutoDriver[];
   initialRide?: AutoRide;
+  initialCustomerName?: string;
+  initialCustomerPhone?: string;
+  initialPickup?: string;
 }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -156,32 +179,30 @@ export default function RideWizard({
   const isDriver = user?.role === "driver" || user?.role === "staff";
   const isEdit = Boolean(initialRide);
 
-  // Owners get all 4 steps (including fare & driver wage); Pilots skip the fare step completely (same as decoration staff)
-  const steps: StepKey[] = useMemo(() => {
-    if (isOwner) {
-      return ["passenger", "route", "fare", "review"];
-    }
-    return ["passenger", "route", "review"];
-  }, [isOwner]);
+  // 3-step wizard matching Photo 1: Step 1 (Details), Step 2 (Amount & Summary), Step 3 (Payment & Save)
+  const steps: StepKey[] = ["details", "amount", "payment"];
 
   const [form, setForm] = useState<RideWizardForm>(() => {
     if (initialRide) return rideToForm(initialRide);
     return {
       ...emptyForm,
+      customerName: initialCustomerName || "",
+      customerPhone: initialCustomerPhone || "",
+      pickupLocation: initialPickup || "",
       driverAssigned: isDriver && user?.name ? user.name : "Unassigned",
     };
   });
-  const [stepIdx, setStepIdx] = useState<number>(isEdit ? steps.length - 1 : 0);
+
+  const [stepIdx, setStepIdx] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [directoryContacts, setDirectoryContacts] = useState<ContactDirectoryItem[]>([]);
   const [nameSuggestions, setNameSuggestions] = useState<ContactDirectoryItem[]>([]);
 
-  // Maps & Location
+  // Location & Geolocation (Exact same style as Anjaneya Decorations LocationField)
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState("");
-  const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [dropCoords, setDropCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [pickupCoords, setPickupCoords] = useState<GeoLocation | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -199,7 +220,7 @@ export default function RideWizard({
     }
   }, [initialRide, isDriver, user?.name, form.driverAssigned]);
 
-  const step = steps[stepIdx] || "passenger";
+  const step = steps[stepIdx] || "details";
   const progressPct = ((stepIdx + 1) / steps.length) * 100;
 
   function updateField<K extends keyof RideWizardForm>(key: K, value: RideWizardForm[K]) {
@@ -228,7 +249,7 @@ export default function RideWizard({
     setNameSuggestions([]);
   }
 
-  // Geolocation with reverse geocoding
+  // Exact same geolocation logic as Anjaneya Decorations LocationField
   function useCurrentLocation(): void {
     if (!("geolocation" in navigator)) {
       setLocError("Location isn't available in this browser.");
@@ -237,45 +258,42 @@ export default function RideWizard({
     setLocating(true);
     setLocError("");
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setPickupCoords({ lat, lng });
-        try {
-          const revRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
-          );
-          if (revRes.ok) {
-            const data = await revRes.json();
+
+        // Try to reverse-geocode to friendly name, fallback to GPS
+        fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+        )
+          .then((res) => res.json())
+          .then((data) => {
             const addr = data.address || {};
             const cleanName =
               addr.road || addr.suburb || addr.neighbourhood || addr.village || addr.town || addr.city || data.display_name?.split(",")[0];
             const area = addr.town || addr.city || addr.county || "Vikarabad";
             updateField("pickupLocation", cleanName ? `${cleanName}, ${area}` : `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-          } else {
+          })
+          .catch(() => {
             updateField("pickupLocation", `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-          }
-        } catch {
-          updateField("pickupLocation", `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        }
-        setLocating(false);
+          })
+          .finally(() => {
+            setLocating(false);
+          });
       },
       () => {
-        setLocError("Couldn't get your location. You can type or search the address instead.");
+        setLocError("Couldn't get your location. You can type the address instead.");
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   }
 
-  const pickupMapsUrl = pickupCoords
+  const pickupMapsLink = pickupCoords
     ? `https://www.google.com/maps?q=${pickupCoords.lat},${pickupCoords.lng}`
     : form.pickupLocation.trim()
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.pickupLocation)}`
-    : null;
-
-  const dropMapsUrl = form.dropLocation.trim()
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.dropLocation)}`
     : null;
 
   const routeDirectionsUrl =
@@ -283,48 +301,26 @@ export default function RideWizard({
       ? buildRouteDirectionsUrl(form.pickupLocation, form.dropLocation)
       : null;
 
-  // Driver WhatsApp Resolution
-  const assignedDriver = drivers.find((d) => d.name === form.driverAssigned);
-  const driverPhone = assignedDriver?.phone || "";
-  const driverWhatsAppUrl = driverPhone
-    ? waLink(
-        driverPhone,
-        buildDriverRideWhatsAppMessage(
-          {
-            id: initialRide?.id,
-            customerName: form.customerName,
-            customerPhone: form.customerPhone,
-            pickupLocation: form.pickupLocation,
-            dropLocation: form.dropLocation,
-            date: form.date,
-            driverPay: form.driverPay,
-            totalAmount: form.totalAmount,
-            advancePaid: form.advancePaid,
-            notes: form.notes,
-          },
-          form.driverAssigned
-        )
-      )
-    : null;
-
+  // Calculation helpers
   const total = parseFloat(form.totalAmount) || 0;
   const advance = parseFloat(form.advancePaid) || 0;
   const due = Math.max(total - advance, 0);
   const pilotWage = parseFloat(form.driverPay) || 0;
-  const netProfit = total - pilotWage;
 
   function handleTotalChange(val: string) {
     updateField("totalAmount", val);
     const tot = parseFloat(val) || 0;
     const adv = parseFloat(form.advancePaid) || 0;
-    updateField("paymentStatus", tot > 0 && tot <= adv ? "paid" : "due");
+    const calcDue = Math.max(tot - adv, 0);
+    updateField("paymentStatus", calcDue <= 0 && tot > 0 ? "paid" : "due");
   }
 
   function handleAdvanceChange(val: string) {
     updateField("advancePaid", val);
     const adv = parseFloat(val) || 0;
     const tot = parseFloat(form.totalAmount) || 0;
-    updateField("paymentStatus", tot > 0 && adv >= tot ? "paid" : "due");
+    const calcDue = Math.max(tot - adv, 0);
+    updateField("paymentStatus", calcDue <= 0 && tot > 0 ? "paid" : "due");
   }
 
   function fillFullAdvance() {
@@ -337,21 +333,15 @@ export default function RideWizard({
   function validateStep(idx: number): boolean {
     setError("");
     const currentStepKey = steps[idx];
-    if (currentStepKey === "passenger") {
+    if (currentStepKey === "details") {
       if (!form.customerName.trim()) {
-        setError("Please enter the passenger name to proceed.");
+        setError("Please enter the passenger/customer name.");
         return false;
       }
     }
-    if (currentStepKey === "route") {
-      if (!form.pickupLocation.trim() && !form.dropLocation.trim()) {
-        setError("Please specify at least a pickup or destination location.");
-        return false;
-      }
-    }
-    if (currentStepKey === "fare") {
+    if (currentStepKey === "amount") {
       if (isOwner && (!form.totalAmount.trim() || Number.isNaN(parseFloat(form.totalAmount)))) {
-        setError("Please enter a valid total fare amount.");
+        setError("Please enter a valid fare amount.");
         return false;
       }
     }
@@ -374,16 +364,41 @@ export default function RideWizard({
     setStepIdx(idx);
   }
 
+  // Driver WhatsApp resolution
+  const assignedDriver = drivers.find((d) => d.name === form.driverAssigned);
+  const driverPhone = assignedDriver?.phone || "";
+  const driverWhatsAppUrl = driverPhone
+    ? waLink(
+        driverPhone,
+        buildDriverRideWhatsAppMessage(
+          {
+            id: initialRide?.id,
+            customerName: form.customerName,
+            customerPhone: form.customerPhone,
+            reason: form.reason,
+            pickupLocation: form.pickupLocation,
+            dropLocation: form.dropLocation,
+            date: form.date,
+            driverPay: form.driverPay,
+            totalAmount: form.totalAmount,
+            advancePaid: form.advancePaid,
+            dueAmount: String(due),
+            notes: form.notes,
+          },
+          form.driverAssigned
+        )
+      )
+    : null;
+
   async function handleSave(sendToDriverAfter = false) {
     if (!form.customerName.trim()) {
-      setError("Please enter passenger name.");
+      setError("Please enter the passenger name.");
       goToStep(0);
       return;
     }
     if (isOwner && (!form.totalAmount.trim() || Number.isNaN(parseFloat(form.totalAmount)))) {
-      setError("Please enter valid total fare amount.");
-      const fareIdx = steps.indexOf("fare");
-      if (fareIdx >= 0) goToStep(fareIdx);
+      setError("Please enter a valid total fare amount.");
+      goToStep(1);
       return;
     }
 
@@ -395,9 +410,10 @@ export default function RideWizard({
       const payload: Partial<AutoRide> = {
         customerName: form.customerName.trim(),
         customerPhone: form.customerPhone.trim(),
+        reason: form.reason.trim(),
         pickupLocation: form.pickupLocation.trim(),
         dropLocation: form.dropLocation.trim(),
-        date: form.date.trim(),
+        date: form.date.trim() || new Date().toISOString().slice(0, 10),
         driverAssigned: assignedPilot,
         totalAmount: isOwner ? String(total) : (initialRide?.totalAmount || "0"),
         advancePaid: isOwner ? String(advance) : (initialRide?.advancePaid || "0"),
@@ -440,8 +456,8 @@ export default function RideWizard({
   }
 
   return (
-    <Card className="bg-content1 border border-primary/30 shadow-md rounded-2xl">
-      <CardBody className="p-6 md:p-10 space-y-6">
+    <Card className="bg-content1 border border-[#D9A427]/30 shadow-md rounded-2xl">
+      <CardBody className="p-5 sm:p-8 md:p-10 space-y-6">
         {/* Progress bar */}
         <div className="space-y-3">
           <Progress
@@ -449,11 +465,11 @@ export default function RideWizard({
             color="primary"
             size="sm"
             className="w-full"
-            aria-label="Wizard progress"
+            aria-label="Ride wizard progress"
           />
 
-          {/* Interactive Steps Bar */}
-          <div className={`grid grid-cols-2 ${isOwner ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-2 pt-1`}>
+          {/* Interactive Steps Bar (Photo 1 & 2: Click to jump or edit any step) */}
+          <div className="grid grid-cols-3 gap-2 pt-1">
             {steps.map((s, idx) => {
               const isCurrent = stepIdx === idx;
               const isCompleted = stepIdx > idx;
@@ -463,7 +479,7 @@ export default function RideWizard({
                   key={s}
                   type="button"
                   onClick={() => goToStep(idx)}
-                  className={`text-left p-2.5 rounded-xl border transition-all ${
+                  className={`text-left p-2.5 sm:p-3 rounded-xl border transition-all ${
                     isCurrent
                       ? "bg-primary text-[#241129] border-primary shadow-sm font-bold"
                       : isCompleted
@@ -473,7 +489,7 @@ export default function RideWizard({
                 >
                   <div className="flex items-center gap-2">
                     <span
-                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono font-bold ${
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
                         isCurrent
                           ? "bg-[#241129] text-primary"
                           : isCompleted
@@ -483,12 +499,13 @@ export default function RideWizard({
                     >
                       {isCompleted ? "✓" : idx + 1}
                     </span>
-                    <span className="text-xs font-semibold truncate">
-                      {s === "passenger" && "Passenger"}
-                      {s === "route" && "Route & Pilot"}
-                      {s === "fare" && "Fare & Pay"}
-                      {s === "review" && "Review"}
-                    </span>
+                    <div className="truncate">
+                      <span className="text-xs sm:text-sm font-semibold truncate block">
+                        {s === "details" && "1. Details"}
+                        {s === "amount" && "2. Amount"}
+                        {s === "payment" && "3. Payment"}
+                      </span>
+                    </div>
                   </div>
                 </button>
               );
@@ -497,211 +514,256 @@ export default function RideWizard({
         </div>
 
         {/* Step Header */}
-        <div className="border-b border-primary/25 pb-4">
-          <p
-            className="text-xs uppercase tracking-widest text-primary font-bold"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            Step {stepIdx + 1} of {steps.length} · Auto Rides
-          </p>
-          <h2
-            className="text-2xl sm:text-3xl font-bold text-[#241129] mt-1"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
-            {STEP_TITLES[step]}
-          </h2>
-          <p className="text-sm text-[#241129]/70 mt-0.5">
-            {STEP_SUBTITLES[step]}
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-primary/25 pb-4">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-primary font-bold font-mono">
+              Step {stepIdx + 1} of {steps.length} · {isEdit ? "Edit Ride" : "Create Ride"}
+            </p>
+            <h2
+              className="text-2xl sm:text-3xl font-bold text-[#241129] mt-1"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              {STEP_TITLES[step]}
+            </h2>
+            <p className="text-xs sm:text-sm text-[#241129]/70 mt-0.5">
+              {STEP_SUBTITLES[step]}
+            </p>
+          </div>
+
+          {/* Direct Save Button available on ALL steps if editing (Photo 2 instruction) */}
+          {isEdit && (
+            <Button
+              color="primary"
+              size="sm"
+              radius="sm"
+              onPress={() => handleSave(false)}
+              isLoading={saving}
+              startContent={!saving && <Save size={15} />}
+              className="font-bold text-[#241129] bg-primary self-start sm:self-auto shadow-sm"
+            >
+              Save Edits Directly
+            </Button>
+          )}
         </div>
 
         {error && (
-          <div className="p-4 bg-danger-50 border border-danger-200 text-danger-700 text-sm rounded-xl font-medium">
+          <div className="p-3.5 bg-danger-50 border border-danger-200 text-danger-700 text-sm rounded-xl font-medium">
             {error}
           </div>
         )}
 
         {/* ============================================================== */}
-        {/* STEP 1: PASSENGER DETAILS */}
+        {/* STEP 1: NAME, REASON, LOCATION (From -> To), DATE (Photo 1)  */}
         {/* ============================================================== */}
-        {step === "passenger" && (
+        {step === "details" && (
           <div className="space-y-6 max-w-2xl">
-            <div className="p-4 rounded-xl bg-[#F8F4E6] border border-primary/30 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#241129] font-mono flex items-center gap-2">
-                <User size={16} className="text-primary" />
-                Passenger Contact Info
-              </span>
-              <Chip size="sm" variant="flat" color="primary" className="text-[10px] font-mono font-bold">
-                Directory Auto-Link
-              </Chip>
-            </div>
+            {/* 1. Name */}
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-[#241129] flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <User size={16} className="text-primary" />
+                  Name: *
+                </span>
+                <span className="text-[11px] font-mono text-gray-400 font-normal">Customer / Passenger</span>
+              </label>
+              <div className="relative">
+                <Input
+                  placeholder="Enter customer name..."
+                  value={form.customerName}
+                  onValueChange={handleNameChange}
+                  isRequired
+                  variant="bordered"
+                  radius="sm"
+                  size="lg"
+                  startContent={<User size={18} className="text-primary" />}
+                />
 
-            <div className="relative">
-              <Input
-                label="Passenger Full Name"
-                value={form.customerName}
-                onValueChange={handleNameChange}
-                isRequired
-                variant="bordered"
-                radius="sm"
-                size="lg"
-                startContent={<User size={18} className="text-primary" />}
-              />
-
-              {nameSuggestions.length > 0 && (
-                <div className="absolute left-0 right-0 z-50 mt-1.5 bg-white border border-primary/40 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto divide-y divide-gray-100">
-                  <div className="px-3.5 py-1.5 bg-[#F8F4E6] text-[11px] font-mono text-primary font-bold flex items-center gap-1.5">
-                    <Sparkles size={13} className="text-primary" />
-                    Directory Matches
+                {nameSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-primary/40 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto divide-y divide-gray-100">
+                    <div className="px-3.5 py-1.5 bg-[#F8F4E6] text-[11px] font-mono text-primary font-bold flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-primary" />
+                      Known Customers
+                    </div>
+                    {nameSuggestions.map((c, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => selectContact(c)}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-primary/10 flex justify-between items-center transition-colors"
+                      >
+                        <span className="font-semibold text-[#241129]">{c.mainName || c.fullName}</span>
+                        <div className="flex items-center gap-2">
+                          {c.phone && (
+                            <Chip size="sm" variant="flat" color="primary" className="text-xs font-mono font-semibold">
+                              {c.phone}
+                            </Chip>
+                          )}
+                          <span className="text-[11px] text-gray-400 capitalize">{c.source}</span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                  {nameSuggestions.map((c, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => selectContact(c)}
-                      className="w-full text-left px-4 py-3 text-sm hover:bg-primary/10 flex justify-between items-center transition-colors"
-                    >
-                      <span className="font-semibold text-[#241129]">{c.mainName || c.fullName}</span>
-                      <div className="flex items-center gap-2">
-                        {c.phone && (
-                          <Chip size="sm" variant="flat" color="primary" className="text-xs font-mono font-semibold">
-                            {c.phone}
-                          </Chip>
-                        )}
-                        <span className="text-[11px] text-gray-400 capitalize">{c.source}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
+            {/* Optional Customer Phone */}
             <Input
-              label="Passenger Mobile Phone Number"
+              label="Phone Number (Optional)"
+              placeholder="e.g. 9876543210"
               value={form.customerPhone}
               onValueChange={(v) => updateField("customerPhone", v)}
               variant="bordered"
               radius="sm"
-              size="lg"
-              startContent={<Phone size={18} className="text-primary" />}
-            />
-
-            <Textarea
-              label="Passenger Notes &amp; Special Requests"
-              value={form.notes}
-              onValueChange={(v) => updateField("notes", v)}
-              variant="bordered"
-              radius="sm"
               size="md"
-              minRows={3}
+              startContent={<Phone size={16} className="text-primary" />}
             />
-          </div>
-        )}
 
-        {/* ============================================================== */}
-        {/* STEP 2: ROUTE, MAPS & PILOT ASSIGNMENT */}
-        {/* ============================================================== */}
-        {step === "route" && (
-          <div className="space-y-6 max-w-2xl">
-            <div className="p-4 rounded-xl bg-[#F8F4E6] border border-primary/30 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#241129] font-mono flex items-center gap-2">
-                <Navigation size={16} className="text-primary" />
-                Route &amp; Google Maps
-              </span>
-              <Chip size="sm" variant="flat" color="primary" className="text-[10px] font-mono font-bold">
-                V.K.M Area Navigation
-              </Chip>
-            </div>
+            {/* 2. Reason (Photo 1: Purpose of ride) */}
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-[#241129] flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Tag size={16} className="text-primary" />
+                  Reason / Purpose of Ride:
+                </span>
+                <span className="text-[11px] font-mono text-gray-400 font-normal">e.g. Marriage, Hospital, Goods</span>
+              </label>
 
-            {/* Google Maps Route Preview Bar */}
-            {routeDirectionsUrl && (
-              <div className="p-4 rounded-xl bg-primary/10 border border-primary/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-mono text-[#241129] truncate">
-                  <span className="font-bold text-success truncate">{form.pickupLocation || "Pickup"}</span>
-                  <ArrowRight size={16} className="text-primary shrink-0" />
-                  <span className="font-bold text-danger truncate">{form.dropLocation || "Destination"}</span>
-                </div>
-                <Button
-                  as="a"
-                  href={routeDirectionsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  color="primary"
-                  variant="solid"
-                  size="sm"
-                  startContent={<ExternalLink size={14} />}
-                  className="font-bold text-[#241129] shrink-0"
-                >
-                  View Route on Google Maps ↗
-                </Button>
-              </div>
-            )}
-
-            {/* Pickup Location with Live Geocoding Search */}
-            <div className="space-y-1">
-              <LocationSearchInput
-                label="Pickup Location"
-                value={form.pickupLocation}
-                onChange={(val, coords) => {
-                  updateField("pickupLocation", val);
-                  if (coords) setPickupCoords(coords);
-                }}
-                isPickup={true}
-                onUseCurrentLocation={useCurrentLocation}
-                locating={locating}
+              <Input
+                placeholder="Reason (e.g. Marriage, Hospital, Goods, Function...)"
+                value={form.reason}
+                onValueChange={(v) => updateField("reason", v)}
+                variant="bordered"
+                radius="sm"
+                size="md"
+                startContent={<Tag size={16} className="text-primary" />}
               />
 
-              {locError && <p className="text-xs text-danger">{locError}</p>}
-
-              {pickupCoords && (
-                <p className="text-xs text-foreground/60 font-mono">
-                  📍 Pinned: {pickupCoords.lat.toFixed(5)}, {pickupCoords.lng.toFixed(5)}{" "}
+              {/* Quick suggestion chips for Reason */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {COMMON_RIDE_REASONS.map((r) => (
                   <button
+                    key={r}
                     type="button"
-                    className="text-danger underline ml-1"
-                    onClick={() => {
-                      setPickupCoords(null);
-                      updateField("pickupLocation", "");
-                    }}
+                    onClick={() => updateField("reason", r)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                      form.reason === r
+                        ? "bg-primary text-[#241129] font-bold shadow-sm"
+                        : "bg-[#F3ECD8] text-[#241129]/80 hover:bg-primary/20 border border-primary/20"
+                    }`}
                   >
-                    clear
+                    {r}
                   </button>
-                </p>
+                ))}
+              </div>
+            </div>
+
+            {/* 3. Location: (text) to (text) (EXACT SAME AS ANJANEYA DECORATIONS) */}
+            <div className="space-y-3 p-4 rounded-xl bg-[#F8F4E6] border border-primary/30">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#241129] font-mono flex items-center gap-2">
+                <Navigation size={16} className="text-primary" />
+                Location: From (text) to (text)
+              </span>
+
+              {/* From (Pickup Location) - with Use current location button like LocationField */}
+              <div className="space-y-1.5">
+                <div className="flex gap-2 items-end">
+                  <Input
+                    label="From (Pickup Location)"
+                    variant="bordered"
+                    radius="sm"
+                    value={form.pickupLocation}
+                    onValueChange={(v) => updateField("pickupLocation", v)}
+                    placeholder="House / street / village / landmark"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="bordered"
+                    radius="sm"
+                    onPress={useCurrentLocation}
+                    isLoading={locating}
+                    className="shrink-0 font-medium"
+                  >
+                    Use current location
+                  </Button>
+                </div>
+                {locError && <p className="text-xs text-danger">{locError}</p>}
+                {pickupCoords && (
+                  <p className="text-xs text-foreground/60 font-mono">
+                    Pinned: {pickupCoords.lat.toFixed(5)}, {pickupCoords.lng.toFixed(5)}{" "}
+                    <button
+                      type="button"
+                      className="text-danger underline ml-1"
+                      onClick={() => {
+                        setPickupCoords(null);
+                        updateField("pickupLocation", "");
+                      }}
+                    >
+                      clear
+                    </button>
+                  </p>
+                )}
+                {pickupMapsLink && (
+                  <a
+                    href={pickupMapsLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block text-xs text-secondary hover:underline font-mono"
+                  >
+                    Preview Pickup on Google Maps &rarr;
+                  </a>
+                )}
+              </div>
+
+              {/* To (Drop Destination) */}
+              <div className="space-y-1.5 pt-1">
+                <Input
+                  label="To (Drop Location)"
+                  variant="bordered"
+                  radius="sm"
+                  value={form.dropLocation}
+                  onValueChange={(v) => updateField("dropLocation", v)}
+                  placeholder="House / street / village / landmark"
+                />
+              </div>
+
+              {/* Google Maps Route directions link */}
+              {routeDirectionsUrl && form.pickupLocation && form.dropLocation && (
+                <div className="pt-1 flex items-center justify-between text-xs font-mono">
+                  <span className="text-gray-500 truncate max-w-[240px]">
+                    {form.pickupLocation} → {form.dropLocation}
+                  </span>
+                  <a
+                    href={routeDirectionsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-secondary font-bold hover:underline inline-flex items-center gap-1"
+                  >
+                    Preview Route on Google Maps ↗
+                  </a>
+                </div>
               )}
             </div>
 
-            {/* Drop Location with Live Geocoding Search */}
-            <div className="space-y-1">
-              <LocationSearchInput
-                label="Destination (Drop)"
-                value={form.dropLocation}
-                onChange={(val, coords) => {
-                  updateField("dropLocation", val);
-                  if (coords) setDropCoords(coords);
-                }}
-                isPickup={false}
-              />
-            </div>
-
-
-            {/* Date & Driver Selection */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            {/* 4. Date: (setting) (Photo 1: Defaults to current date) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 type="date"
-                label="Trip Date"
+                label="Date: (setting)"
                 value={form.date}
                 onValueChange={(v) => updateField("date", v)}
                 variant="bordered"
                 radius="sm"
-                size="lg"
+                size="md"
                 startContent={<Calendar size={18} className="text-primary" />}
               />
 
               <Select
-                label="Assigned Pilot"
+                label="Assigned Pilot / Driver"
                 variant="bordered"
                 radius="sm"
-                size="lg"
+                size="md"
                 selectedKeys={[form.driverAssigned]}
                 onSelectionChange={(keys) => {
                   const val = Array.from(keys)[0] as string;
@@ -720,316 +782,307 @@ export default function RideWizard({
                 ]}
               </Select>
             </div>
+
+            {/* Optional Notes */}
+            <Textarea
+              label="Notes (Optional)"
+              placeholder="Any additional remarks..."
+              value={form.notes}
+              onValueChange={(v) => updateField("notes", v)}
+              variant="bordered"
+              radius="sm"
+              size="sm"
+              minRows={2}
+            />
           </div>
         )}
 
         {/* ============================================================== */}
-        {/* STEP 3: FARE, ADVANCE & PILOT SETTLEMENT */}
+        {/* STEP 2: DISPLAY ALL STEP 1 & ASK FOR AMOUNT (Photo 1)          */}
         {/* ============================================================== */}
-        {step === "fare" && (
+        {step === "amount" && (
           <div className="space-y-6 max-w-2xl">
-            <div className="p-4 rounded-xl bg-[#F8F4E6] border border-primary/30 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#241129] font-mono flex items-center gap-2">
-                <Wallet size={16} className="text-primary" />
-                Fare, Advance &amp; Pilot Settlement
-              </span>
-              <span className="text-xs font-mono font-bold text-primary">Rupees (₹)</span>
+            {/* Display all the Step 1 details (Photo 1 instruction) */}
+            <div className="p-5 rounded-2xl bg-[#F8F4E6] border border-primary/40 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#241129] font-mono flex items-center gap-1.5">
+                  <CheckCircle2 size={16} className="text-primary" />
+                  Step 1 Summary Details
+                </span>
+                {/* Photo 2: Direct Edit option to jump back to Step 1 */}
+                <Button
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  onPress={() => goToStep(0)}
+                  startContent={<Edit2 size={13} />}
+                  className="font-bold text-xs h-7"
+                >
+                  Edit Step 1
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-sm">
+                <div>
+                  <span className="text-[11px] uppercase font-mono text-gray-500 block">Name:</span>
+                  <span className="font-bold text-[#241129] text-base">{form.customerName || "—"}</span>
+                  {form.customerPhone && (
+                    <span className="text-xs font-mono text-gray-500 block">{form.customerPhone}</span>
+                  )}
+                </div>
+
+                <div>
+                  <span className="text-[11px] uppercase font-mono text-gray-500 block">Reason:</span>
+                  <span className="font-semibold text-primary">{form.reason || "General Ride"}</span>
+                </div>
+
+                <div>
+                  <span className="text-[11px] uppercase font-mono text-gray-500 block">Location:</span>
+                  {form.pickupLocation && form.dropLocation ? (
+                    <span className="font-semibold text-gray-800">
+                      {form.pickupLocation} → {form.dropLocation}
+                    </span>
+                  ) : form.pickupLocation ? (
+                    <span className="font-semibold text-gray-800">{form.pickupLocation}</span>
+                  ) : form.dropLocation ? (
+                    <span className="font-semibold text-gray-800">{form.dropLocation}</span>
+                  ) : (
+                    <span className="text-gray-400 italic">Not entered</span>
+                  )}
+                </div>
+
+                <div>
+                  <span className="text-[11px] uppercase font-mono text-gray-500 block">Date:</span>
+                  <span className="font-mono text-xs font-bold text-[#241129]">{form.date}</span>
+                  {form.driverAssigned !== "Unassigned" && (
+                    <span className="text-xs text-gray-500 block mt-0.5">Pilot: {form.driverAssigned}</span>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Ask for Amount (Photo 1 instruction) */}
+            <div className="p-5 rounded-2xl bg-white border border-primary/30 shadow-sm space-y-4">
+              <label className="text-base font-bold text-[#241129] flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Wallet size={18} className="text-primary" />
+                  Amount: (₹) *
+                </span>
+                <span className="text-xs font-mono text-primary font-bold">Total Fare</span>
+              </label>
+
               <Input
                 type="number"
-                label="Total Fare Amount (₹)"
+                placeholder="Enter fare amount (e.g. 200, 500)..."
                 value={form.totalAmount}
                 onValueChange={handleTotalChange}
                 isRequired
                 variant="bordered"
                 radius="sm"
                 size="lg"
-                startContent={<span className="text-sm text-primary font-bold font-mono">₹</span>}
+                startContent={<span className="text-lg text-primary font-bold font-mono">₹</span>}
               />
 
+              {/* Quick Amount presets for fast touch on mobile */}
+              <div className="flex flex-wrap gap-2">
+                {[50, 100, 150, 200, 300, 400, 500, 800, 1000].map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => handleTotalChange(String(amt))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                      form.totalAmount === String(amt)
+                        ? "bg-primary text-[#241129] shadow-sm"
+                        : "bg-[#F3ECD8] text-[#241129] hover:bg-primary/20 border border-primary/20"
+                    }`}
+                  >
+                    ₹{amt}
+                  </button>
+                ))}
+              </div>
+
+              {/* Optional Pilot Wage (Owner only) */}
+              {isOwner && (
+                <div className="pt-3 border-t border-gray-100">
+                  <Input
+                    type="number"
+                    label="Pilot Wage / Pay (Optional ₹)"
+                    placeholder="e.g. 150"
+                    value={form.driverPay}
+                    onValueChange={(v) => updateField("driverPay", v)}
+                    variant="bordered"
+                    radius="sm"
+                    size="sm"
+                    startContent={<span className="text-xs text-primary font-bold font-mono">₹</span>}
+                    description="Amount handed to driver for this trip"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* STEP 3: TOTAL, ADV, DUE, STATUS, (SAVE) (CANCEL) (Photo 1)      */}
+        {/* ============================================================== */}
+        {step === "payment" && (
+          <div className="space-y-6 max-w-2xl">
+            {/* Step 1 & 2 Summary Card with Edit Buttons (Photo 2) */}
+            <div className="p-4 rounded-xl bg-[#F8F4E6] border border-primary/30 flex items-center justify-between">
               <div>
-                <Input
-                  type="number"
-                  label="Advance Collected (₹)"
-                  value={form.advancePaid}
-                  onValueChange={handleAdvanceChange}
+                <p className="font-bold text-[#241129] text-sm">
+                  {form.customerName} {form.reason ? `· ${form.reason}` : ""}
+                </p>
+                <p className="text-xs text-gray-500 font-mono mt-0.5">
+                  {form.pickupLocation || form.dropLocation ? `${form.pickupLocation || ""} ${form.pickupLocation && form.dropLocation ? "→" : ""} ${form.dropLocation || ""}` : "Location not set"} · {form.date}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="light"
+                  color="primary"
+                  onPress={() => goToStep(0)}
+                  startContent={<Edit2 size={12} />}
+                  className="font-semibold text-xs h-7"
+                >
+                  Edit Step 1
+                </Button>
+                <Button
+                  size="sm"
+                  variant="light"
+                  color="primary"
+                  onPress={() => goToStep(1)}
+                  startContent={<Edit2 size={12} />}
+                  className="font-semibold text-xs h-7"
+                >
+                  Edit Step 2
+                </Button>
+              </div>
+            </div>
+
+            {/* Payment Fields: Total, Adv, Due (Photo 1) */}
+            <div className="p-5 rounded-2xl bg-white border border-primary/30 shadow-sm space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* 1. Total */}
+                <div className="space-y-1">
+                  <label className="text-xs uppercase font-mono font-bold text-gray-500 block">
+                    Total: (₹)
+                  </label>
+                  <Input
+                    type="number"
+                    value={form.totalAmount}
+                    onValueChange={handleTotalChange}
+                    variant="bordered"
+                    radius="sm"
+                    size="lg"
+                    startContent={<span className="text-sm text-primary font-bold font-mono">₹</span>}
+                  />
+                </div>
+
+                {/* 2. Adv */}
+                <div className="space-y-1">
+                  <label className="text-xs uppercase font-mono font-bold text-gray-500 block">
+                    Adv: (₹)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={form.advancePaid}
+                    onValueChange={handleAdvanceChange}
+                    variant="bordered"
+                    radius="sm"
+                    size="lg"
+                    startContent={<span className="text-sm text-success font-bold font-mono">₹</span>}
+                  />
+                  {total > 0 && advance < total && (
+                    <button
+                      type="button"
+                      onClick={fillFullAdvance}
+                      className="text-[11px] text-primary hover:underline font-mono font-semibold"
+                    >
+                      Fill full (₹{total})
+                    </button>
+                  )}
+                </div>
+
+                {/* 3. Due (Calculated: Total - Adv) */}
+                <div className="p-3.5 rounded-xl bg-[#F3ECD8] border border-primary/40 flex flex-col justify-center">
+                  <span className="text-[11px] text-[#241129]/60 uppercase font-mono font-bold">
+                    Due: (Total - Adv)
+                  </span>
+                  <span
+                    className={`text-2xl font-bold ${due > 0 ? "text-[#8B4A15]" : "text-success"}`}
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    ₹{due.toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Status / Payment Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                <Select
+                  label="Payment Status (Paid / Due)"
                   variant="bordered"
                   radius="sm"
-                  size="lg"
-                  startContent={<span className="text-sm text-success font-bold font-mono">₹</span>}
-                />
-                {total > 0 && advance < total && (
-                  <button
-                    type="button"
-                    onClick={fillFullAdvance}
-                    className="text-xs text-primary hover:underline mt-1.5 font-mono font-semibold block"
-                  >
-                    Mark fully paid (₹{total})
-                  </button>
-                )}
-              </div>
-
-              {/* Pending Due Display */}
-              <div className="p-4 rounded-xl bg-[#F3ECD8] border border-primary/40 flex flex-col justify-center">
-                <span className="text-[11px] text-[#241129]/60 uppercase font-mono font-semibold">
-                  Pending Due Balance
-                </span>
-                <span
-                  className={`text-xl font-bold ${due > 0 ? "text-[#241129]" : "text-success"}`}
-                  style={{ fontFamily: "var(--font-display)" }}
+                  size="md"
+                  selectedKeys={[form.paymentStatus]}
+                  onSelectionChange={(keys) => {
+                    const val = Array.from(keys)[0] as "paid" | "due";
+                    if (val) updateField("paymentStatus", val);
+                  }}
                 >
-                  {due > 0 ? `₹${due.toLocaleString("en-IN")}` : "Fully Settled"}
-                </span>
+                  <SelectItem key="paid" textValue="Paid in Full">Paid in Full</SelectItem>
+                  <SelectItem key="due" textValue="Payment Due">Payment Due</SelectItem>
+                </Select>
+
+                <Select
+                  label="Ride Completion Status"
+                  variant="bordered"
+                  radius="sm"
+                  size="md"
+                  selectedKeys={[form.status]}
+                  onSelectionChange={(keys) => {
+                    const val = Array.from(keys)[0] as "completed" | "scheduled" | "cancelled";
+                    if (val) updateField("status", val);
+                  }}
+                >
+                  <SelectItem key="completed" textValue="Completed">Completed</SelectItem>
+                  <SelectItem key="scheduled" textValue="Scheduled">Scheduled</SelectItem>
+                  <SelectItem key="cancelled" textValue="Cancelled">Cancelled</SelectItem>
+                </Select>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-              <Input
-                type="number"
-                label="Pilot Wage / Pay (₹)"
-                value={form.driverPay}
-                onValueChange={(v) => updateField("driverPay", v)}
-                variant="bordered"
-                radius="sm"
-                size="lg"
-                description="Wage handed to pilot"
-                startContent={<span className="text-sm text-primary font-bold font-mono">₹</span>}
-              />
-
-              <Select
-                label="Trip Status"
-                variant="bordered"
-                radius="sm"
-                size="lg"
-                selectedKeys={[form.status]}
-                onSelectionChange={(keys) => {
-                  const val = Array.from(keys)[0] as "completed" | "scheduled" | "cancelled";
-                  if (val) updateField("status", val);
-                }}
-              >
-                <SelectItem key="completed" textValue="Completed">Completed</SelectItem>
-                <SelectItem key="scheduled" textValue="Scheduled">Scheduled</SelectItem>
-                <SelectItem key="cancelled" textValue="Cancelled">Cancelled</SelectItem>
-              </Select>
-
-              <Select
-                label="Payment Status"
-                variant="bordered"
-                radius="sm"
-                size="lg"
-                selectedKeys={[form.paymentStatus]}
-                onSelectionChange={(keys) => {
-                  const val = Array.from(keys)[0] as "paid" | "due";
-                  if (val) updateField("paymentStatus", val);
-                }}
-              >
-                <SelectItem key="paid" textValue="Paid in Full">Paid in Full</SelectItem>
-                <SelectItem key="due" textValue="Payment Due">Payment Due</SelectItem>
-              </Select>
-            </div>
-
-            {total > 0 && (
-              <div className="p-4 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-between font-mono text-sm">
-                <span className="text-[#241129]/80">
-                  Owner Net Margin (Fare ₹{total} − Pilot ₹{pilotWage}):
-                </span>
-                <span
-                  className={`font-bold text-base ${
-                    netProfit >= 0 ? "text-success" : "text-danger"
-                  }`}
+            {/* Optional Pilot WhatsApp Share */}
+            {driverWhatsAppUrl && (
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="text-emerald-700" size={18} />
+                  <span className="text-xs font-semibold text-emerald-900">
+                    Dispatch trip info to Pilot {form.driverAssigned} via WhatsApp
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  color="success"
+                  variant="flat"
+                  onPress={() => handleSave(true)}
+                  isLoading={saving}
+                  className="font-bold text-xs"
                 >
-                  ₹{netProfit.toLocaleString("en-IN")}
-                </span>
+                  Save &amp; WhatsApp Pilot
+                </Button>
               </div>
             )}
           </div>
         )}
 
-        {/* ============================================================== */}
-        {/* STEP 4: REVIEW & CONFIRM (WITH SEND TO DRIVER WHATSAPP) */}
-        {/* ============================================================== */}
-        {step === "review" && (
-          <div className="space-y-6">
-            <div className="p-4 rounded-xl bg-[#F8F4E6] border border-primary/30 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#241129] font-mono flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-success" />
-                Final Review &amp; Dispatch
-              </span>
-              <Chip size="sm" variant="flat" color="primary" className="text-[10px] font-mono font-bold uppercase">
-                Ready to Record
-              </Chip>
-            </div>
-
-            <div className={`grid grid-cols-1 ${isOwner ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4`}>
-              {/* Passenger Card */}
-              <div className="p-5 rounded-2xl bg-white border border-primary/30 shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase font-mono text-primary flex items-center gap-1.5">
-                    <User size={14} />
-                    Passenger
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="light"
-                    color="primary"
-                    onPress={() => goToStep(0)}
-                    startContent={<Edit2 size={12} />}
-                    className="h-7 text-xs font-semibold"
-                  >
-                    Edit
-                  </Button>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-lg font-bold text-[#241129]">{form.customerName || "—"}</p>
-                  <p className="text-xs font-mono text-gray-500">{form.customerPhone || "No phone entered"}</p>
-                  {form.notes && (
-                    <p className="text-xs text-gray-600 pt-2 border-t border-gray-100 italic">
-                      &quot;{form.notes}&quot;
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Route & Pilot Card */}
-              <div className="p-5 rounded-2xl bg-white border border-primary/30 shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase font-mono text-primary flex items-center gap-1.5">
-                    <Navigation size={14} />
-                    Route &amp; Pilot
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="light"
-                    color="primary"
-                    onPress={() => goToStep(1)}
-                    startContent={<Edit2 size={12} />}
-                    className="h-7 text-xs font-semibold"
-                  >
-                    Edit
-                  </Button>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-[11px] text-gray-400 font-mono uppercase block">Pickup</span>
-                    <span className="font-semibold text-success">{form.pickupLocation || "VKM"}</span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-gray-400 font-mono uppercase block">Destination</span>
-                    <span className="font-semibold text-danger">{form.dropLocation || "VKM"}</span>
-                  </div>
-                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs font-mono">
-                    <span className="text-gray-500">Date: {form.date}</span>
-                    <Chip size="sm" variant="flat" color="primary">
-                      Pilot: {form.driverAssigned}
-                    </Chip>
-                  </div>
-                </div>
-              </div>
-
-              {/* Financial Settlement Card (Owner only, hidden from pilots same as decoration staff) */}
-              {isOwner && (
-                <div className="p-5 rounded-2xl bg-white border border-primary/30 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase font-mono text-primary flex items-center gap-1.5">
-                      <Wallet size={14} />
-                      Settlement
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="light"
-                      color="primary"
-                      onPress={() => {
-                        const fareIdx = steps.indexOf("fare");
-                        if (fareIdx >= 0) goToStep(fareIdx);
-                      }}
-                      startContent={<Edit2 size={12} />}
-                      className="h-7 text-xs font-semibold"
-                    >
-                      Edit
-                    </Button>
-                  </div>
-                  <div className="space-y-1.5 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Total Fare:</span>
-                      <span className="font-bold text-[#241129]">₹{total.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Advance Paid:</span>
-                      <span className="font-semibold text-success">₹{advance.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Pending Due:</span>
-                      <span className={`font-bold ${due > 0 ? "text-[#241129]" : "text-success"}`}>
-                        ₹{due.toLocaleString("en-IN")}
-                      </span>
-                    </div>
-                    <div className="flex justify-between pt-1 border-t border-gray-100">
-                      <span className="text-gray-500">Pilot Wage:</span>
-                      <span className="font-semibold text-secondary">₹{pilotWage.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between pt-1 border-t border-gray-100 text-xs font-mono font-bold">
-                      <span>Owner Net Margin:</span>
-                      <span className={netProfit >= 0 ? "text-success" : "text-danger"}>
-                        ₹{netProfit.toLocaleString("en-IN")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* SEND TO PILOT DISPATCH BANNER */}
-            <div className="p-5 rounded-2xl bg-[#F8F4E6] border border-primary/40 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <MessageCircle className="text-success" size={20} />
-                  <h3 className="font-bold text-base text-[#241129]">
-                    Send Trip Details to Pilot via WhatsApp
-                  </h3>
-                </div>
-                <p className="text-xs text-foreground/70">
-                  {driverPhone
-                    ? `Assigned pilot ${form.driverAssigned} (${driverPhone}) will receive the complete route, Google Maps directions, and passenger details.`
-                    : form.driverAssigned !== "Unassigned"
-                    ? `No phone number on file for ${form.driverAssigned}. Register phone in Pilots section to send WhatsApp directly.`
-                    : "Assign a pilot in Step 2 to enable 1-click WhatsApp dispatch."}
-                </p>
-              </div>
-
-              {driverWhatsAppUrl ? (
-                <Button
-                  as="a"
-                  href={driverWhatsAppUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  color="success"
-                  variant="solid"
-                  size="md"
-                  startContent={<MessageCircle size={18} />}
-                  className="font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shrink-0"
-                >
-                  Send to Pilot (WhatsApp)
-                </Button>
-              ) : (
-                <Button
-                  isDisabled
-                  size="md"
-                  variant="flat"
-                  className="font-semibold text-gray-400 shrink-0"
-                >
-                  Pilot WhatsApp Unavailable
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <Divider className="my-6 border-primary/25" />
+        <Divider className="my-4 border-primary/25" />
 
         {/* ============================================================== */}
-        {/* STEPPER NAVIGATION BUTTONS */}
+        {/* STEPPER NAVIGATION BUTTONS: (SAVE) (CANCEL) (Photo 1)          */}
         {/* ============================================================== */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
           {stepIdx > 0 ? (
@@ -1040,13 +1093,14 @@ export default function RideWizard({
               startContent={<ArrowLeft size={16} />}
               className="font-semibold"
             >
-              Back
+              Back to {stepIdx === 1 ? "Step 1" : "Step 2"}
             </Button>
           ) : (
             <Button
               variant="light"
               radius="sm"
               onPress={() => router.push("/auto-rides/rides")}
+              startContent={<X size={16} />}
               className="font-semibold text-gray-500"
             >
               Cancel
@@ -1062,22 +1116,18 @@ export default function RideWizard({
                 endContent={<ArrowRight size={16} />}
                 className="font-bold text-[#241129] bg-primary shadow-md hover:bg-primary/90 px-6"
               >
-                Continue to {steps[stepIdx + 1] === "route" ? "Route & Maps" : steps[stepIdx + 1] === "fare" ? "Fare" : "Review"}
+                Next: {stepIdx === 0 ? "Amount (Step 2)" : "Payment & Due (Step 3)"} →
               </Button>
             ) : (
-              <>
-                {driverWhatsAppUrl && (
-                  <Button
-                    color="success"
-                    radius="sm"
-                    onPress={() => handleSave(true)}
-                    isLoading={saving}
-                    startContent={!saving && <MessageCircle size={18} />}
-                    className="font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md px-6 text-sm"
-                  >
-                    Confirm &amp; Send to Pilot
-                  </Button>
-                )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="light"
+                  radius="sm"
+                  onPress={() => router.push("/auto-rides/rides")}
+                  className="font-semibold text-gray-500"
+                >
+                  Cancel
+                </Button>
                 <Button
                   color="primary"
                   radius="sm"
@@ -1086,9 +1136,9 @@ export default function RideWizard({
                   startContent={!saving && <CheckCircle2 size={18} />}
                   className="font-bold text-[#241129] bg-primary shadow-lg hover:bg-primary/90 px-8 text-base"
                 >
-                  {isEdit ? "Save Ride Changes" : "Confirm & Book Ride"}
+                  {isEdit ? "Save Ride Edits" : "Save Ride"}
                 </Button>
-              </>
+              </div>
             )}
           </div>
         </div>

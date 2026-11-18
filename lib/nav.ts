@@ -40,4 +40,4 @@ export const CREATE_RIDE_ITEM: NavItem = {
   label: "Create Ride",
   href: "/auto-rides/new",
   icon: PlusCircle,
-};
+};

@@ -271,6 +271,12 @@ export interface AutoRide {
   driverPay?: string;
   status: AutoRideStatus;
   paymentStatus: AutoRidePaymentStatus;
+  /** Number of rides/trips done in this booking (default 1) */
+  rideCount?: number;
+  /** Purpose of ride: e.g. Marriage, Hospital, Goods, Function, etc. */
+  reason?: string;
+  /** Linked diesel batch ID */
+  dieselId?: string;
   notes?: string;
   createdAt?: string;
 }
@@ -286,6 +292,10 @@ export interface AutoDieselEntry {
   filledByDriver?: string;
   stationOrVehicle?: string;
   repairItem?: string;
+  /** Reason for repair or service */
+  reason?: string;
+  /** Ride IDs done on this diesel fill */
+  rideIds?: string[];
   notes?: string;
   createdAt?: string;
 }

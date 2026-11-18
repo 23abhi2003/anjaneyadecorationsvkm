@@ -188,7 +188,7 @@ export default function RideDetailModal({
                     </Chip>
                   </div>
                   <p className="text-xs text-primary font-mono font-bold">
-                    Trip Date: {ride.date}
+                    Trip Date: {ride.date} • {Number(ride.rideCount) || 1} { (Number(ride.rideCount) || 1) === 1 ? "Ride" : "Rides" }
                   </p>
                 </div>
               </div>
@@ -254,7 +254,14 @@ export default function RideDetailModal({
                       <User size={14} className="text-primary" />
                       Passenger
                     </span>
-                    <p className="text-base font-bold text-[#241129]">{ride.customerName}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-base font-bold text-[#241129]">{ride.customerName}</p>
+                      {ride.reason && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F3ECD8] text-[#8B4A15] font-semibold">
+                          {ride.reason}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-primary font-mono font-medium">
                       {ride.customerPhone || "No contact provided"}
                     </p>

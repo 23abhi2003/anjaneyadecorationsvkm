@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
-import type { AutoRide, AutoDriver, Customer } from "@/lib/types";
+import { type AutoRide, type AutoDriver, type Customer, getRideCount } from "@/lib/types";
 import BackButton from "@/components/BackButton";
 import RideDetailModal from "@/components/autorides/RideDetailModal";
 import QuickAddRideModal from "@/components/autorides/QuickAddRideModal";
@@ -72,7 +72,9 @@ export default function AutoRidesListPage() {
 
   // Quick Add / Reduce Ride Modal (+ / - buttons on card)
   const [quickAddBaseRide, setQuickAddBaseRide] = useState<AutoRide | null>(null);
+  const [quickAddTargetCount, setQuickAddTargetCount] = useState<number>(2);
   const [quickAddMode, setQuickAddMode] = useState<"add" | "reduce">("add");
+  const [pendingRideCounts, setPendingRideCounts] = useState<Record<string, number>>({});
   const {
     isOpen: isQuickAddOpen,
     onOpen: openQuickAdd,
@@ -80,15 +82,45 @@ export default function AutoRidesListPage() {
   } = useDisclosure();
 
   function handleQuickAddRide(ride: AutoRide) {
+    const current = pendingRideCounts[ride.id] ?? getRideCount(ride);
+    const nextCount = current + 1;
+    setPendingRideCounts((prev) => ({ ...prev, [ride.id]: nextCount }));
     setQuickAddBaseRide(ride);
+    setQuickAddTargetCount(nextCount);
     setQuickAddMode("add");
     openQuickAdd();
   }
 
   function handleReduceRide(ride: AutoRide) {
+    const current = pendingRideCounts[ride.id] ?? getRideCount(ride);
+    if (current <= 1) return;
+    const nextCount = current - 1;
+    setPendingRideCounts((prev) => ({ ...prev, [ride.id]: nextCount }));
     setQuickAddBaseRide(ride);
+    setQuickAddTargetCount(nextCount);
     setQuickAddMode("reduce");
     openQuickAdd();
+  }
+
+  function handleQuickAddCancel() {
+    if (quickAddBaseRide) {
+      setPendingRideCounts((prev) => {
+        const next = { ...prev };
+        delete next[quickAddBaseRide.id];
+        return next;
+      });
+    }
+  }
+
+  function handleQuickAddSuccess() {
+    if (quickAddBaseRide) {
+      setPendingRideCounts((prev) => {
+        const next = { ...prev };
+        delete next[quickAddBaseRide.id];
+        return next;
+      });
+    }
+    loadRides();
   }
 
   async function loadRides() {
@@ -349,14 +381,12 @@ export default function AutoRidesListPage() {
             const fare = parseFloat(ride.totalAmount || "0") || 0;
             const due = parseFloat(ride.dueAmount || "0") || 0;
             const driverWage = parseFloat(ride.driverPay || "0") || 0;
-            const rideCount = Number(ride.rideCount) || 1;
+            const baseCount = getRideCount(ride);
+            const rideCount = pendingRideCounts[ride.id] ?? baseCount;
 
             return (
               <Card
                 key={ride.id}
-                as={Link}
-                href={`/auto-rides/rides/detail?id=${encodeURIComponent(ride.id)}`}
-                isPressable
                 className="p-4 bg-white/95 border border-[#D9A427]/30 shadow-sm hover:shadow-md transition-all text-left block rounded-xl"
               >
                 {/* Header: ID, [ - {rideCount} + ] Interactive Counter (Photo 2), Eye Icon, Status */}
@@ -468,9 +498,12 @@ export default function AutoRidesListPage() {
                 {/* Customer Name, Phone & Purpose/Reason (Photo 1 & 2) */}
                 <div className="mt-2.5 space-y-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <h3 className="text-base font-bold text-[#241129] truncate">
+                    <Link
+                      href={`/auto-rides/rides/detail?id=${encodeURIComponent(ride.id)}`}
+                      className="text-base font-bold text-[#241129] truncate hover:text-[#5B2674] hover:underline"
+                    >
                       {ride.customerName}
-                    </h3>
+                    </Link>
                     <span className="font-mono text-xs text-gray-500 shrink-0">
                       {ride.date}
                     </span>
@@ -606,10 +639,10 @@ export default function AutoRidesListPage() {
         isOpen={isQuickAddOpen}
         onOpenChange={onQuickAddOpenChange}
         baseRide={quickAddBaseRide}
+        targetCount={quickAddTargetCount}
         mode={quickAddMode}
-        onSuccess={() => {
-          loadRides();
-        }}
+        onCancel={handleQuickAddCancel}
+        onSuccess={handleQuickAddSuccess}
       />
     </div>
   );

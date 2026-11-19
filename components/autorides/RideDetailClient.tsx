@@ -30,7 +30,7 @@ import {
   Check,
   Save,
 } from "lucide-react";
-import type { AutoRide, AutoDriver } from "@/lib/types";
+import { type AutoRide, type AutoDriver, getRideCount } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/Auth";
 import { waLink, cleanLocationForMaps, buildRouteDirectionsUrl } from "@/lib/orderDisplay";
@@ -237,7 +237,7 @@ export default function RideDetailClient({
           <p className="text-[#F8F4E6]/70 text-sm mt-1.5 flex items-center gap-2 font-mono">
             <span>📅 {ride.date}</span>
             <span>·</span>
-            <span>🚕 {Number(ride.rideCount) || 1} { (Number(ride.rideCount) || 1) === 1 ? "Ride" : "Rides" }</span>
+            <span>🚕 {getRideCount(ride)} { getRideCount(ride) === 1 ? "Ride" : "Rides" }</span>
             <span>·</span>
             <span>📍 {ride.pickupLocation || "VKM"} → {ride.dropLocation || "VKM"}</span>
           </p>
@@ -661,7 +661,6 @@ export default function RideDetailClient({
             <Textarea
               value={notes}
               onValueChange={setNotes}
-              placeholder="e.g. Passenger luggage, round trip, waiting time, landmark..."
               variant="bordered"
               radius="sm"
               minRows={2}

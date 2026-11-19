@@ -887,7 +887,6 @@ export default function AutoRidesAnalyticsCard({
 
             <div className="w-full sm:w-64">
               <Input
-                placeholder="Search trip, passenger, reason..."
                 value={rideSearchQuery}
                 onValueChange={setRideSearchQuery}
                 size="sm"

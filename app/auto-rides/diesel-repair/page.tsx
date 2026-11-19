@@ -379,7 +379,6 @@ export default function AutoDieselRepairPage() {
         <form onSubmit={handleAddRepair} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
           <Input
             label="Reason:"
-            placeholder="e.g. Tyre puncture, Oil change, Brake pads..."
             value={repairReason}
             onValueChange={setRepairReason}
             variant="bordered"
@@ -390,7 +389,6 @@ export default function AutoDieselRepairPage() {
           <Input
             type="number"
             label="Amount (₹):"
-            placeholder="Amount spent"
             value={repairAmount}
             onValueChange={setRepairAmount}
             variant="bordered"
@@ -683,7 +681,6 @@ export default function AutoDieselRepairPage() {
 
                 <ModalBody className="space-y-3">
                   <Input
-                    placeholder="Search ride by customer name, reason, trip ID..."
                     value={rideSearch}
                     onValueChange={setRideSearch}
                     size="sm"

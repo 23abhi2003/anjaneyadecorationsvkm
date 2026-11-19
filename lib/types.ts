@@ -281,6 +281,21 @@ export interface AutoRide {
   createdAt?: string;
 }
 
+/** Helper to extract the actual ride count, falling back to parsed notes if rideCount field was not stored in DB */
+export function getRideCount(ride?: Partial<AutoRide> | null): number {
+  if (!ride) return 1;
+  const num = Number(ride.rideCount);
+  if (!isNaN(num) && num > 0) return num;
+  if (ride.notes) {
+    const matches = Array.from(ride.notes.matchAll(/\[Ride\s+(\d+)\s+on/gi));
+    if (matches.length > 0) {
+      const highest = Math.max(...matches.map((m) => parseInt(m[1], 10)));
+      if (highest > 1) return highest;
+    }
+  }
+  return 1;
+}
+
 export type AutoDieselType = "diesel" | "repair";
 
 export interface AutoDieselEntry {

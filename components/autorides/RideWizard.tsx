@@ -568,7 +568,6 @@ export default function RideWizard({
               </label>
               <div className="relative">
                 <Input
-                  placeholder="Enter customer name..."
                   value={form.customerName}
                   onValueChange={handleNameChange}
                   isRequired
@@ -610,7 +609,6 @@ export default function RideWizard({
             {/* Optional Customer Phone */}
             <Input
               label="Phone Number (Optional)"
-              placeholder="e.g. 9876543210"
               value={form.customerPhone}
               onValueChange={(v) => updateField("customerPhone", v)}
               variant="bordered"
@@ -630,7 +628,6 @@ export default function RideWizard({
               </label>
 
               <Input
-                placeholder="Reason (e.g. Marriage, Hospital, Goods, Function...)"
                 value={form.reason}
                 onValueChange={(v) => updateField("reason", v)}
                 variant="bordered"
@@ -674,7 +671,6 @@ export default function RideWizard({
                     radius="sm"
                     value={form.pickupLocation}
                     onValueChange={(v) => updateField("pickupLocation", v)}
-                    placeholder="House / street / village / landmark"
                     className="flex-1"
                   />
                   <Button
@@ -724,7 +720,6 @@ export default function RideWizard({
                   radius="sm"
                   value={form.dropLocation}
                   onValueChange={(v) => updateField("dropLocation", v)}
-                  placeholder="House / street / village / landmark"
                 />
               </div>
 
@@ -786,7 +781,6 @@ export default function RideWizard({
             {/* Optional Notes */}
             <Textarea
               label="Notes (Optional)"
-              placeholder="Any additional remarks..."
               value={form.notes}
               onValueChange={(v) => updateField("notes", v)}
               variant="bordered"
@@ -873,7 +867,6 @@ export default function RideWizard({
 
               <Input
                 type="number"
-                placeholder="Enter fare amount (e.g. 200, 500)..."
                 value={form.totalAmount}
                 onValueChange={handleTotalChange}
                 isRequired
@@ -907,7 +900,6 @@ export default function RideWizard({
                   <Input
                     type="number"
                     label="Pilot Wage / Pay (Optional ₹)"
-                    placeholder="e.g. 150"
                     value={form.driverPay}
                     onValueChange={(v) => updateField("driverPay", v)}
                     variant="bordered"
@@ -987,7 +979,6 @@ export default function RideWizard({
                   </label>
                   <Input
                     type="number"
-                    placeholder="0"
                     value={form.advancePaid}
                     onValueChange={handleAdvanceChange}
                     variant="bordered"

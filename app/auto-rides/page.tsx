@@ -258,7 +258,6 @@ export default function AutoRidesDashboard() {
         <div className="w-full max-w-xl mx-auto mt-6 px-4">
           <Input
             aria-label="Search by passenger, phone, route, or pilot"
-            placeholder="Search passenger, phone, route, or pilot…"
             value={searchQuery}
             onValueChange={setSearchQuery}
             variant="flat"

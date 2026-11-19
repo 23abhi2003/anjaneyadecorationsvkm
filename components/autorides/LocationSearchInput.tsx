@@ -169,7 +169,6 @@ export default function LocationSearchInput({
         <div className="relative flex-1">
           <Input
             label={label}
-            placeholder={placeholder || (isPickup ? "Type pickup place, landmark, village…" : "Type drop location, town, city…")}
             value={query}
             onValueChange={handleInputChange}
             onFocus={() => {

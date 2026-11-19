@@ -29,7 +29,7 @@ import {
   Wallet,
   Check,
 } from "lucide-react";
-import type { AutoRide, AutoDriver } from "@/lib/types";
+import { type AutoRide, type AutoDriver, getRideCount } from "@/lib/types";
 import { apiFetch } from "@/lib/api";
 import { waLink, cleanLocationForMaps, buildRouteDirectionsUrl } from "@/lib/orderDisplay";
 import { buildDriverRideWhatsAppMessage } from "@/components/autorides/RideWizard";
@@ -188,7 +188,7 @@ export default function RideDetailModal({
                     </Chip>
                   </div>
                   <p className="text-xs text-primary font-mono font-bold">
-                    Trip Date: {ride.date} • {Number(ride.rideCount) || 1} { (Number(ride.rideCount) || 1) === 1 ? "Ride" : "Rides" }
+                    Trip Date: {ride.date} • {getRideCount(ride)} { getRideCount(ride) === 1 ? "Ride" : "Rides" }
                   </p>
                 </div>
               </div>

@@ -9,26 +9,25 @@ import {
   ModalFooter,
   Button,
   Input,
-  Chip,
 } from "@heroui/react";
 import {
   Wallet,
-  Calendar,
   CheckCircle2,
   Plus,
   Minus,
-  Sparkles,
   AlertCircle,
-  Tag,
+  Car,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import type { AutoRide } from "@/lib/types";
+import { type AutoRide, getRideCount } from "@/lib/types";
 
 interface QuickAddRideModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   baseRide: AutoRide | null;
+  targetCount?: number;
   mode?: "add" | "reduce";
+  onCancel?: () => void;
   onSuccess: () => void;
 }
 
@@ -38,16 +37,21 @@ export default function QuickAddRideModal({
   isOpen,
   onOpenChange,
   baseRide,
+  targetCount,
   mode = "add",
+  onCancel,
   onSuccess,
 }: QuickAddRideModalProps) {
   const isReduce = mode === "reduce";
 
-  const currentCount = Number(baseRide?.rideCount) || 1;
+  const currentCount = getRideCount(baseRide);
   const currentTotal = parseFloat(baseRide?.totalAmount || "0") || 0;
   const currentAdvance = parseFloat(baseRide?.advancePaid || "0") || 0;
   const currentDue = parseFloat(baseRide?.dueAmount || "0") || 0;
   const suggestedAmount = Math.max(Math.round(currentTotal / currentCount), 100) || 500;
+
+  const nextCountAdd = targetCount ?? currentCount + 1;
+  const nextCountReduce = targetCount ?? Math.max(currentCount - 1, 1);
 
   // Form states
   const [amountInput, setAmountInput] = useState<string>("");
@@ -59,7 +63,7 @@ export default function QuickAddRideModal({
   useEffect(() => {
     if (baseRide && isOpen) {
       setAmountInput(String(suggestedAmount));
-      // If the current ride was already fully paid, default to collecting payment now as well
+      // If previous ride was fully paid, default to collecting payment now as well
       setIsPaidNow(currentDue <= 0 && currentTotal > 0);
       setReason("");
       setError("");
@@ -69,13 +73,11 @@ export default function QuickAddRideModal({
   const enteredAmount = Math.max(parseFloat(amountInput) || 0, 0);
 
   // Computed values for "add" mode
-  const newCountAdd = currentCount + 1;
   const newTotalAdd = currentTotal + enteredAmount;
   const newAdvanceAdd = currentAdvance + (isPaidNow ? enteredAmount : 0);
   const newDueAdd = Math.max(newTotalAdd - newAdvanceAdd, 0);
 
   // Computed values for "reduce" mode
-  const newCountReduce = Math.max(currentCount - 1, 1);
   const newTotalReduce = Math.max(currentTotal - enteredAmount, 0);
   const newAdvanceReduce = Math.min(currentAdvance, newTotalReduce);
   const newDueReduce = Math.max(newTotalReduce - newAdvanceReduce, 0);
@@ -83,7 +85,7 @@ export default function QuickAddRideModal({
   async function handleSave() {
     if (!baseRide) return;
     if (enteredAmount <= 0) {
-      setError("Please enter a valid amount.");
+      setError("Please enter an amount.");
       return;
     }
 
@@ -99,7 +101,7 @@ export default function QuickAddRideModal({
         const updatedNotes = baseRide.notes ? `${baseRide.notes}\n${noteLine}` : noteLine;
 
         payload = {
-          rideCount: newCountReduce,
+          rideCount: nextCountReduce,
           totalAmount: String(newTotalReduce),
           advancePaid: String(newAdvanceReduce),
           dueAmount: String(newDueReduce),
@@ -107,13 +109,13 @@ export default function QuickAddRideModal({
           notes: updatedNotes,
         };
       } else {
-        const noteLine = `[Ride ${newCountAdd} on ${today}]: +₹${enteredAmount}${
+        const noteLine = `[Ride ${nextCountAdd} on ${today}]: +₹${enteredAmount}${
           reason.trim() ? ` (${reason.trim()})` : ""
         } — ${isPaidNow ? "Paid" : "Pending Due"}`;
         const updatedNotes = baseRide.notes ? `${baseRide.notes}\n${noteLine}` : noteLine;
 
         payload = {
-          rideCount: newCountAdd,
+          rideCount: nextCountAdd,
           totalAmount: String(newTotalAdd),
           advancePaid: String(newAdvanceAdd),
           dueAmount: String(newDueAdd),
@@ -142,43 +144,51 @@ export default function QuickAddRideModal({
     }
   }
 
+  function handleCloseModal() {
+    onCancel?.();
+    onOpenChange(false);
+  }
+
   if (!baseRide) return null;
 
   return (
     <Modal
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
+      onOpenChange={(open) => {
+        if (!open) onCancel?.();
+        onOpenChange(open);
+      }}
       placement="center"
       size="md"
       classNames={{
-        base: "bg-white border border-[#D9A427]/40 shadow-2xl rounded-2xl mx-3",
+        base: "bg-white border border-[#D9A427]/50 shadow-2xl rounded-2xl mx-3",
         header: "border-b border-gray-100 pb-3",
         footer: "border-t border-gray-100 pt-3",
       }}
     >
       <ModalContent>
-        {(onClose) => (
+        {() => (
           <>
             <ModalHeader className="flex items-center gap-2.5">
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-base shadow-sm ${
                   isReduce
                     ? "bg-danger-100 text-danger"
-                    : "bg-[#D9A427]/20 text-[#241129] border border-[#D9A427]/40"
+                    : "bg-[#D9A427] text-[#241129]"
                 }`}
               >
-                {isReduce ? <Minus size={18} strokeWidth={2.5} /> : <Plus size={18} strokeWidth={2.5} />}
+                {isReduce ? <Minus size={18} strokeWidth={3} /> : <Plus size={18} strokeWidth={3} />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-bold text-[#241129]">
-                    {isReduce ? "Reduce Ride Count" : "Add Ride to Existing Booking"}
+                    {isReduce ? `Reduce to ${nextCountReduce} Ride` : `Ride ${nextCountAdd}`}
                   </h2>
-                  <span className="font-mono text-xs font-bold text-primary px-1.5 py-0.5 rounded bg-primary/10">
+                  <span className="font-mono text-xs font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/25">
                     {baseRide.id}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-xs text-gray-500 truncate mt-0.5">
                   Customer: <span className="font-semibold text-gray-800">{baseRide.customerName}</span>
                 </p>
               </div>
@@ -192,16 +202,16 @@ export default function QuickAddRideModal({
                 </div>
               )}
 
-              {/* Current Status Banner */}
-              <div className="p-3 rounded-xl bg-gray-50 border border-gray-200/80 flex items-center justify-between text-xs">
+              {/* Ride Counter Step Badge */}
+              <div className="p-3 rounded-xl bg-[#5B2674]/10 border border-[#5B2674]/20 flex items-center justify-between text-xs">
                 <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-mono tracking-wider">Current</span>
-                  <span className="font-bold text-sm text-[#241129]">
-                    {currentCount} {currentCount === 1 ? "Ride" : "Rides"}
+                  <span className="text-gray-500 font-mono text-[11px] block">Rides:</span>
+                  <span className="font-mono font-bold text-sm text-[#5B2674]">
+                    {currentCount} {currentCount === 1 ? "Ride" : "Rides"} → {isReduce ? nextCountReduce : nextCountAdd} { (isReduce ? nextCountReduce : nextCountAdd) === 1 ? "Ride" : "Rides" }
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-gray-400 block text-[10px] uppercase font-mono tracking-wider">Total / Due</span>
+                  <span className="text-gray-500 font-mono text-[11px] block">Current Total / Due:</span>
                   <span className="font-mono font-bold text-sm text-[#241129]">
                     ₹{currentTotal.toLocaleString("en-IN")}
                   </span>
@@ -211,23 +221,23 @@ export default function QuickAddRideModal({
                 </div>
               </div>
 
-              {/* Amount to Add / Deduct */}
+              {/* Amount Question & Input */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-700 block">
-                  {isReduce ? "Amount to Deduct (₹)" : "Amount to Add for this Extra Ride (₹)"}
+                <label className="text-sm font-bold text-[#241129] block">
+                  {isReduce ? "Amount to Deduct (₹)" : `Enter Amount for Ride ${nextCountAdd} (₹)`}
                 </label>
                 <Input
                   type="number"
                   variant="bordered"
                   radius="sm"
-                  placeholder="e.g. 500"
+                  size="lg"
                   value={amountInput}
                   onValueChange={(val) => {
                     setAmountInput(val);
                     setError("");
                   }}
-                  startContent={<span className="text-gray-400 font-bold text-sm">₹</span>}
-                  className="font-mono text-base"
+                  startContent={<span className="text-gray-400 font-bold text-lg font-mono">₹</span>}
+                  className="font-mono text-lg font-bold"
                   autoFocus
                 />
 
@@ -239,7 +249,7 @@ export default function QuickAddRideModal({
                       key={amt}
                       type="button"
                       onClick={() => setAmountInput(String(amt))}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                      className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
                         enteredAmount === amt
                           ? "bg-[#241129] text-white shadow-xs"
                           : "bg-gray-100 hover:bg-[#D9A427]/20 text-gray-700 border border-gray-200"
@@ -253,7 +263,7 @@ export default function QuickAddRideModal({
 
               {!isReduce && (
                 <>
-                  {/* Payment Status Switcher for this added ride */}
+                  {/* Payment Status Switcher */}
                   <div className="space-y-1.5 pt-1">
                     <label className="text-xs font-bold text-gray-700 block">
                       Payment Status for this Ride
@@ -293,7 +303,7 @@ export default function QuickAddRideModal({
                     </div>
                   </div>
 
-                  {/* Optional Reason / Destination Note for this trip */}
+                  {/* Trip note / reason (Optional) */}
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-600 block">
                       Trip Note / Reason (Optional)
@@ -302,7 +312,6 @@ export default function QuickAddRideModal({
                       variant="bordered"
                       radius="sm"
                       size="sm"
-                      placeholder="e.g. 2nd round trip, Return, Hospital, etc."
                       value={reason}
                       onValueChange={setReason}
                     />
@@ -310,32 +319,23 @@ export default function QuickAddRideModal({
                 </>
               )}
 
-              {/* New Resulting Summary Box */}
-              <div className="p-3 rounded-xl bg-[#241129]/5 border border-[#241129]/15 space-y-1.5">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block font-bold">
-                  New Result after {isReduce ? "Deduction" : "Adding Ride"}:
-                </span>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600">Total Rides for this Booking:</span>
-                  <span className="font-mono font-bold text-sm text-[#5B2674]">
-                    {isReduce ? newCountReduce : newCountAdd} { (isReduce ? newCountReduce : newCountAdd) === 1 ? "Ride" : "Rides" }
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600">Updated Total Fare:</span>
+              {/* Summary */}
+              <div className="p-3 rounded-xl bg-gray-50 border border-gray-200/80 space-y-1 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Updated Total:</span>
                   <span className="font-mono font-bold text-base text-[#241129]">
                     ₹{(isReduce ? newTotalReduce : newTotalAdd).toLocaleString("en-IN")}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-200/60">
-                  <span className="text-gray-600">Updated Due Amount:</span>
+                <div className="flex items-center justify-between pt-1 border-t border-gray-200/60">
+                  <span className="text-gray-500">Updated Due:</span>
                   <span
                     className={`font-mono font-bold text-xs ${
                       (isReduce ? newDueReduce : newDueAdd) <= 0 ? "text-success" : "text-warning-800"
                     }`}
                   >
                     {(isReduce ? newDueReduce : newDueAdd) <= 0
-                      ? "Fully Paid (₹0 Due)"
+                      ? "Paid in Full"
                       : `₹${(isReduce ? newDueReduce : newDueAdd).toLocaleString("en-IN")} Due`}
                   </span>
                 </div>
@@ -343,7 +343,13 @@ export default function QuickAddRideModal({
             </ModalBody>
 
             <ModalFooter className="flex items-center justify-between gap-2">
-              <Button variant="light" size="sm" onPress={onClose} disabled={saving} className="text-gray-600">
+              <Button
+                variant="light"
+                size="sm"
+                onPress={handleCloseModal}
+                disabled={saving}
+                className="text-gray-600 font-medium"
+              >
                 Cancel
               </Button>
               <Button
@@ -358,7 +364,7 @@ export default function QuickAddRideModal({
               >
                 {isReduce
                   ? `Confirm & Deduct (-₹${enteredAmount})`
-                  : `Save & Add Ride (+₹${enteredAmount})`}
+                  : `Save Ride ${nextCountAdd} (+₹${enteredAmount})`}
               </Button>
             </ModalFooter>
           </>
